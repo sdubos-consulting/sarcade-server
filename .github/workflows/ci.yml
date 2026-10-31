@@ -129,7 +129,19 @@ jobs:
           # Everything else over plain HTTP is redirected to HTTPS.
           test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: sarcade.test' http://localhost:8081/health)" = "308"
           # The server answers over HTTPS with the certificate of the local CA.
-          curl -fsS --cacert root.crt --resolve sarcade.test:8443:127.0.0.1 https://sarcade.test:8443/health
+          # Retried: Caddy may still be issuing the certificate or reaching
+          # the server right after start (flaky step, 31 Oct 2026).
+          ok=0
+          for i in {1..30}; do
+            if curl -fsS --cacert root.crt --resolve sarcade.test:8443:127.0.0.1 https://sarcade.test:8443/health; then ok=1; break; fi
+            sleep 2
+          done
+          if [ "$ok" != 1 ]; then
+            code=$(curl -s -o /dev/null -w '%{http_code}' --cacert root.crt --resolve sarcade.test:8443:127.0.0.1 https://sarcade.test:8443/health)
+            logs=$(docker compose -f docker-compose.demo.yml logs --tail 25 https server 2>&1 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=HTTPS proxy::/health over HTTPS answered ${code}%0A${logs}"
+            exit 1
+          fi
           curl -fsS --cacert root.crt --resolve sarcade.test:8443:127.0.0.1 https://sarcade.test:8443/api/v0.1/clients/config \
             | python3 -c "import json,sys; h=json.load(sys.stdin)['https']; assert h['url']=='https://sarcade.test', h; assert h['root_certificate_url'].endswith('/sarcade-root.crt'), h; print(h)"
       - name: Verify the embedded web client
