@@ -589,4 +589,16 @@ def test_nearly_parallel_bearings_do_not_cross():
 
 def test_rounded_labels():
     assert tv.round_distance(699) == "700 m" and tv.round_distance(1260) == "1,3 km" and tv.round_distance(12400) == "12 km"
-    assert tv.zone_label(699, 1, 0) == "±700 m · 1 relevé"
+    assert tv.zone_label(699, 3, 0) == "±700 m · 3 relevés"
+    assert tv.zone_label(50, 2, 2) == "zone approximative · 2 relevés · 2 écartés"
+
+
+def test_never_below_three_bearings_kept():
+    """31 Oct 2026, 23 h 47: 2 bearings set aside out of 4 left a zone on a
+    single crossing (« ±50 m · 2 relevés · 2 écartés »)."""
+    wild1 = _towards(48.78, 2.20, (48.70, 2.05))
+    wild2 = _towards(48.70, 2.15, (48.90, 2.20))
+    [z] = tv.probable_zones([*GOOD[:2], wild1, wild2])
+    assert z["bearings"] >= 3 and len(z["excluded"]) <= 1
+    [z] = tv.probable_zones([*GOOD[:2], wild1])
+    assert z["excluded"] == [] and z["bearings"] == 3
