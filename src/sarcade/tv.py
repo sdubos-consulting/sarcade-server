@@ -481,6 +481,8 @@ def round_distance(m: float) -> str:
 # `probableZone` of the application (bearing_models.dart), keep in step.
 MIN_CROSSING_ANGLE_DEG = 20.0   # nearly parallel bearings cross badly
 MIN_TOLERANCE_M = 100.0
+# Automatic setting aside stops at this number of bearings kept.
+MIN_KEPT = 3
 MIN_RADIUS_M = 50.0
 ZONE_SHARE = 0.9                 # radius holding ~90 % of the weighted crossings
 
@@ -541,12 +543,14 @@ def _miss(b: dict, centre: tuple[float, float]) -> tuple[float, float]:
 
 def robust_zone(group: list[dict]) -> dict:
     """Zone of one search: bearings set aside by hand (« out ») are left
-    out; then, with 3 or more, each bearing is tested against the zone of
+    out; then, with 4 or more, each bearing is tested against the zone of
     the others and the worst one beyond its error cone is set aside, again
-    until all agree. Bearings put back by hand (« in ») are always kept."""
+    until all agree. Never below MIN_KEPT bearings (31 Oct 2026, 23 h 47:
+    2 set aside out of 4 left a zone on a single crossing). Bearings put
+    back by hand (« in ») are always kept."""
     used = {i for i, b in enumerate(group) if b.get("zone") != "out"}
     auto: list[int] = []
-    while len(used) >= 3:
+    while len(used) > MIN_KEPT:
         worst, worst_ratio = None, 1.0
         for i in sorted(used):
             if group[i].get("zone") == "in":
@@ -575,8 +579,13 @@ def robust_zone(group: list[dict]) -> dict:
 
 
 def zone_label(radius_m: float, used: int, excluded: int) -> str:
-    """« ±700 m · 4 relevés », « · 1 écarté » when one was set aside."""
-    text = f"±{round_distance(radius_m)} · {used} relevé{'s' if used > 1 else ''}"
+    """« ±700 m · 4 relevés », « · 1 écarté » when one was set aside.
+    Two bearings make one crossing, not a measured precision:
+    « zone approximative · 2 relevés »."""
+    if used < MIN_KEPT:
+        text = f"zone approximative · {used} relevé{'s' if used > 1 else ''}"
+    else:
+        text = f"±{round_distance(radius_m)} · {used} relevé{'s' if used > 1 else ''}"
     if excluded:
         text += f" · {excluded} écarté{'s' if excluded > 1 else ''}"
     return text
