@@ -79,3 +79,15 @@ def test_settings_follow_the_email_from_one_device_to_another():
     assert out["available"] is True
     assert out["preferences"] == {"favourites": ["F4JPO"]}
     assert api.read_preferences(_request("other@example.org"), db)["preferences"] == {}
+
+
+def test_rail_pins_and_operator_icon():
+    out = apply_patch(None, {"rail_pins": ["files", "weather", "files"], "operator_icon": "car"})
+    assert out == {"rail_pins": ["files", "weather"], "operator_icon": "car"}
+    for bad in ({"rail_pins": ["a"] * 7}, {"rail_pins": ["Files!"]}, {"operator_icon": "rocket"}):
+        try:
+            apply_patch(None, bad)
+        except InvalidPreferences:
+            continue
+        raise AssertionError(bad)
+    assert apply_patch(out, {"operator_icon": None}) == {"rail_pins": ["files", "weather"]}

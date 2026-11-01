@@ -1,4 +1,5 @@
 """Validation of the personal settings: only known keys, bounded values."""
+import re
 
 MAX_FAVOURITES = 500
 MAX_COLOURS = 16
@@ -32,6 +33,33 @@ def _history(v) -> list[int]:
     return [_colour(x) for x in v]
 
 
+MAX_PINS = 6
+_TOOL_ID = re.compile(r"^[a-z0-9_-]{1,32}$")
+# Icon of an operator on the map, same meanings as the APRS symbols
+# (1 Nov 2026); the one chosen in SARCADE wins over the APRS one.
+OPERATOR_ICONS = ("walk", "bike", "moto", "car", "4x4", "truck", "ambulance", "fire", "boat",
+                  "helicopter", "plane", "fixed", "relay", "pco")
+
+
+def _pins(v) -> list[str]:
+    """Tools pinned in the left bar (web, Windows, tablet), in order."""
+    if not isinstance(v, list) or len(v) > MAX_PINS:
+        raise InvalidPreferences("invalid_value")
+    out: list[str] = []
+    for x in v:
+        if not isinstance(x, str) or not _TOOL_ID.match(x):
+            raise InvalidPreferences("invalid_value")
+        if x not in out:
+            out.append(x)
+    return out
+
+
+def _icon(v) -> str:
+    if v not in OPERATOR_ICONS:
+        raise InvalidPreferences("invalid_value")
+    return v
+
+
 KEYS = {
     # Stations and operators marked with a star (Équipes, carte).
     "favourites": _favourites,
@@ -39,6 +67,10 @@ KEYS = {
     # to the next; and the colours chosen before (« historisée »).
     "color": _colour,
     "color_history": _history,
+    # Left bar: tools pinned under the four fixed buttons (1 Nov 2026).
+    "rail_pins": _pins,
+    # Icon of the operator on the map (1 Nov 2026).
+    "operator_icon": _icon,
 }
 
 
