@@ -744,7 +744,9 @@ def test_a_grown_zone_keeps_its_seed_and_the_others(monkeypatch):
     far = [{**_towards(48.82, 2.50, (48.82, 2.10), length_m=40000), "id": "f1"},
            {**_towards(48.55, 2.12, (48.80, 2.12), length_m=40000), "id": "f2"}]
     bearings = [*GOOD, *OTHER, *far]
-    grown = tv._geometry(bearings, {0, 1, 2, 3, 7, 8})[1]
+    monkeypatch.setattr(tv, "ZONE_MAX_RADIUS_M", 1e9)
+    grown = tv.split_zones(bearings)[0]["radius_m"]
+    assert grown > 1000
     monkeypatch.setattr(tv, "ZONE_MAX_RADIUS_M", grown - 100)
     zones = tv.probable_zones(bearings)
     assert len(zones) == 2
@@ -774,11 +776,13 @@ def test_mode_multi_relaxed_thresholds():
     assert len(tv.probable_zones([*GOOD, *wide], {"s": "multi"})) == 2
 
 
+# Azimuth errors of the realistic set, the same in the application tests.
+NOISE = (2.1, -1.4, 0.7, -2.6, 1.9, -0.3, 2.8, -1.1, -2.2, 1.3, 0.4, -2.9, 1.6, -0.8, 2.5, -1.7)
+
+
 def test_realistic_two_beacons_ten_km_apart():
     """Eight positions (four teams, two places each), each hears both
     beacons about 10 km apart, azimuths within ±3°."""
-    import random
-    rnd = random.Random(4)
     b1, b2 = (48.80, 2.10), (48.83, 2.23)
     assert 9000 < tv.distance_m(b1, b2) < 11000
     places = [(48.74, 2.05), (48.76, 2.08), (48.88, 2.02), (48.90, 2.06),
@@ -787,7 +791,8 @@ def test_realistic_two_beacons_ten_km_apart():
     for k, p in enumerate(places):
         for n, target in ((1, b1), (2, b2)):
             b = _towards(p[0], p[1], target, length_m=15000)
-            bearings.append({**b, "id": f"{k}-{n}", "azimuth_deg": (b["azimuth_deg"] + rnd.uniform(-3, 3)) % 360})
+            noise = NOISE[2 * k + n - 1]
+            bearings.append({**b, "id": f"{k}-{n}", "azimuth_deg": (b["azimuth_deg"] + noise) % 360})
     for modes in (None, {"s": "multi"}):
         zones = tv.probable_zones(bearings, modes)
         assert len(zones) == 2
