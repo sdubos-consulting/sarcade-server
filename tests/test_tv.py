@@ -618,3 +618,14 @@ def test_same_signal_whatever_the_apostrophe():
     assert len({b["color"] for b in unified}) == 1
     [z] = tv.probable_zones(unified)
     assert z["bearings"] == 3
+
+
+def test_tv_marks_bearings_set_aside():
+    """1 Nov 2026: the TV drew a bearing set aside like the others. The ids
+    of `excluded` are those of the bearings sent, and the page uses them."""
+    wild = _towards(48.78, 2.20, (48.70, 2.05))
+    bearings = [*GOOD, wild]
+    [z] = tv.probable_zones(bearings)
+    assert set(z["excluded"]) <= {b["id"] for b in bearings}
+    from sarcade.api import tv as tv_page
+    assert "z.excluded" in tv_page._TV and "b.zone==='out'" in tv_page._TV
