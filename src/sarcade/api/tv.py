@@ -675,8 +675,15 @@ return[p2*180/Math.PI,(l1+Math.atan2(Math.sin(t)*Math.sin(d)*Math.cos(p1),Math.c
 // 121,5 red, exercise 121,375 blue); no label at the end of a bearing
 // (30 Oct 2026): the legend bottom left names the signals.
 const col6=c=>/^#[0-9a-f]{6}$/i.test(c||'')?c:'#3DD6F5';
-function drawBearings(op){brgL.clearLayers();for(const b of bData){const col=col6(b.color),len=Number(b.length_m)||10000,cone=Number(nz(b.cone_deg,5));
-const st={color:col,weight:3,opacity:op},end=dest(b.lat,b.lon,b.azimuth_deg,len);
+function drawBearings(op){brgL.clearLayers();
+// Bearings set aside from a probable zone (automatically or by the PCO):
+// grey dashed line without cone, as in the application (1 Nov 2026).
+const out={};for(const z of zData){for(const id of z.excluded||[])out[id]=true;}
+for(const b of bData){const col=col6(b.color),len=Number(b.length_m)||10000,cone=Number(nz(b.cone_deg,5));
+const end=dest(b.lat,b.lon,b.azimuth_deg,len);
+if(out[b.id]||b.zone==='out'){const g={color:'#9aa3ad',weight:2.5,opacity:op,dashArray:'10 8'};
+L.circleMarker([b.lat,b.lon],Object.assign({},g,{radius:4,fillOpacity:op,dashArray:null})).addTo(brgL);L.polyline([[b.lat,b.lon],end],g).addTo(brgL);continue;}
+const st={color:col,weight:3,opacity:op};
 if(cone>0)L.polygon([[b.lat,b.lon],dest(b.lat,b.lon,(b.azimuth_deg-cone+360)%360,len),dest(b.lat,b.lon,(b.azimuth_deg+cone)%360,len)],
 {color:col,weight:1,opacity:.35*op,fillColor:col,fillOpacity:.10*op,interactive:false}).addTo(brgL);
 L.circleMarker([b.lat,b.lon],Object.assign({},st,{radius:4,fillOpacity:op})).addTo(brgL);L.polyline([[b.lat,b.lon],end],st).addTo(brgL);}
