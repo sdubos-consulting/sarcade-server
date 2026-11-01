@@ -115,3 +115,12 @@ def test_traces_options_and_drawing():
     assert tv_core.clean_display_options({})["layers"]["traces"] is False
     assert tv_core.clean_display_options({"traces_window": 7, "traces_ids": ["A"]})["traces_window"] == 60
     assert "function drawTraces()" in tv._TV and "weight:5" in tv._TV
+
+
+def test_exercise_zone_signage():
+    """Maquette validée (1 Nov 2026): orange dashed exercise zone, label
+    outside the circle with « EX », legend of the three symbols."""
+    page = tv._TV
+    assert "dashArray:z.exercise?'14 9':null" in page and '<span class="ex">EX</span>' in page
+    assert "EXERCICE" not in page
+    assert "Zone d’exercice" in page and "Relevé écarté" in page

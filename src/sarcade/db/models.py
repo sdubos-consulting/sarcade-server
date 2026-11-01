@@ -252,6 +252,8 @@ class DeviceRow(Base):
     # to have positions transmitted on local radio (note « APRS »).
     callsign: Mapped[str | None] = mapped_column(String(16), index=True)
     aprs_tx_consent: Mapped[bool | None] = mapped_column()
+    # Icon of the operator on the map (sarcade.profile.preferences.OPERATOR_ICONS).
+    icon: Mapped[str | None] = mapped_column(String(16))
     last_contact_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_position_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

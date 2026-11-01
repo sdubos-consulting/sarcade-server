@@ -220,8 +220,8 @@ def test_weather_cache_expires_after_ten_minutes():
 
 
 def test_tv_page_draws_the_layers_with_escaped_texts():
-    for needle in ("drawFeatures", "drawBearings", "drawRefs", "EXERCICE", "msgBox", 'id="wx"',
-                   "esc(f.label)", "esc(z.label)", "esc(r.callsign||r.name)"):
+    for needle in ("drawFeatures", "drawBearings", "drawRefs", '<span class="ex">EX</span>', "msgBox", 'id="wx"',
+                   "esc(f.label)", "String(z.label||'')", "esc(r.callsign||r.name)"):
         assert needle in api._TV
 
 
@@ -401,7 +401,7 @@ def test_tv_page_lot4():
     assert "Outils › Afficher sur une TV" in t and "Paramètres › Affichage" not in t
     assert "padding:0 20px 0 10px" in t
     assert "blab" not in t                         # no label at the end of the bearings
-    for needle in ('id="legend"', "esc(k||'Sans signal')", "esc(z.label)", "Zone probable", "'Vue de '+v.from",
+    for needle in ('id="legend"', "esc(k||'Sans signal')", "esc(parts.slice(0,2)", "Zone probable", "'Vue de '+v.from",
                    "textContent=v.from", "o.aprs", "o.high", "o.relay", "cone_deg"):
         assert needle in t
 
