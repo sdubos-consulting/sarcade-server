@@ -67,10 +67,12 @@ check(c.get(f"{API}/tv/state", headers=TV).json()["options"]["messages"] is Fals
 view = {"lat": 48.8, "lon": 2.1, "zoom": 13, "from": "PCO-Web", "messages": True,
         "layers": {"bearings": True}, "opacity": {"aprs": 0.4, "high": 0.3, "relay": 0.6, "brg": 0.5}}
 check(c.put(f"{E}/displays/{d['id']}/view", json={"view": view}).status_code == 200, "view sent")
+check(c.get(f"{API}/tv/state", headers=TV).json()["options"]["messages"] is False, "a view keeps the screen's messages choice")
+c.put(f"{E}/displays/{d['id']}/view", json={"view": view, "messages": True})
 s = c.get(f"{API}/tv/state", headers=TV).json()
 check(s["view"]["from"] == "PCO-Web" and s["options"]["opacity"]["aprs"] == 0.4 and s["options"]["opacity"]["relay"] == 0.6,
       "view with its sender and one opacity per layer")
-check(s["options"]["messages"] is True, "the view carries the messages column")
+check(s["options"]["messages"] is True, "messages column ticked on purpose when sending")
 view["layers"] = {"bearings": False}
 c.put(f"{E}/displays/{d['id']}/view", json={"view": view})
 check(c.get(f"{API}/tv/state", headers=TV).json()["zones"] == [], "zone follows the bearings layer")
