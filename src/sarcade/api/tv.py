@@ -601,8 +601,9 @@ h2{font-size:16px;color:var(--h2);text-transform:uppercase;letter-spacing:1px;ma
 .ex{background:#ff9f1c;color:#14201a;font-weight:900;border-radius:4px;padding:0 5px;font-size:13px;margin-right:6px}
 /* Probable zone label (maquette validée le 1er novembre 2026): outside the
    circle, opaque dark background, white text, coloured frame. */
-.zlab span{display:inline-block;white-space:nowrap;background:#08111c;color:#fff;border:2px solid;padding:4px 10px;font-size:20px;font-weight:600;border-radius:8px}
-.zlab small{font-size:15px;font-weight:400;color:#b8c6d6}
+.zlab>span{display:inline-block;white-space:nowrap;background:#08111c;color:#fff;border:1px solid;padding:2px 7px;font-size:15px;font-weight:600;border-radius:6px}
+.zlab small{font-size:13px;font-weight:400;color:#b8c6d6}
+.zlab .ex{font-size:11px;padding:0 4px;margin-right:5px;vertical-align:1px}
 #mapBox{position:relative;min-width:0;height:100%}
 #legend{display:none;position:absolute;left:10px;bottom:10px;z-index:900;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:15px;max-width:40%}
 #legend div{display:flex;align-items:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.6}
@@ -742,7 +743,7 @@ L.circle([z.lat,z.lon],{radius:r,color:zc,weight:z.exercise?4:3,dashArray:z.exer
 const edge=dest(z.lat,z.lon,60,r),tip=dest(z.lat,z.lon,60,r*1.35+150);
 L.polyline([edge,tip],{color:zc,weight:2,opacity:op,interactive:false}).addTo(brgL);
 const parts=String(z.label||'').split(' · '),main=esc(parts.slice(0,2).join(' · ')),rest=parts.length>2?' <small>· '+esc(parts.slice(2).join(' · '))+'</small>':'';
-L.marker(tip,{interactive:false,icon:L.divIcon({className:'zlab',iconSize:null,iconAnchor:[0,18],
+L.marker(tip,{interactive:false,icon:L.divIcon({className:'zlab',iconSize:null,iconAnchor:[0,12],
 html:'<span style="border-color:'+zc+';opacity:'+op+'">'+(z.exercise?'<span class="ex">EX</span>':'')+main+rest+'</span>'})}).addTo(brgL);}
 legend();}
 // Legend bottom left, always visible while bearings are shown.

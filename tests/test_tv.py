@@ -637,3 +637,37 @@ def test_tv_marks_bearings_set_aside():
     assert set(z["excluded"]) <= {b["id"] for b in bearings}
     from sarcade.api import tv as tv_page
     assert "z.excluded" in tv_page._TV and "b.zone==='out'" in tv_page._TV
+
+
+# --- Several beacons on one signal (option 1 validated 1 Nov 2026, 7 h 44) ---
+
+SECOND = (48.86, 1.92)   # second beacon, about 15 km from TARGET
+OTHER = [_towards(48.82, 1.90, SECOND), _towards(48.88, 1.86, SECOND), _towards(48.86, 2.00, SECOND)]
+
+
+def test_two_beacons_two_zones():
+    zones = tv.probable_zones([*GOOD, *OTHER])
+    assert len(zones) == 2
+    z1, z2 = zones
+    assert z1["index"] == 1 and z1["bearings"] == 4 and z2["bearings"] == 3
+    assert abs(z1["lat"] - TARGET[0]) < 0.004 and abs(z2["lat"] - SECOND[0]) < 0.004
+    assert z1["label"].startswith("Zone 1 · ±") and z2["label"].startswith("Zone 2 · ±")
+    assert z1["radius_m"] < 1000 and z2["radius_m"] < 1000 and z1["excluded"] == []
+
+
+def test_one_beacon_and_wrong_bearings_stay_one_zone():
+    wild1 = _towards(48.78, 2.20, (48.70, 2.05))
+    wild2 = _towards(48.70, 2.00, (48.95, 2.30))
+    zones = tv.probable_zones([*GOOD, wild1, wild2])
+    assert len(zones) == 1 and "index" not in zones[0]
+
+
+def test_three_bearings_from_one_place_never_make_a_zone():
+    same = [{**_towards(48.90, 1.96, SECOND), "id": f"p{i}"} for i in range(3)]
+    zones = tv.probable_zones([*GOOD, *same])
+    assert len(zones) == 1
+
+
+def test_bearing_kept_by_hand_keeps_one_zone():
+    zones = tv.probable_zones([*GOOD, *OTHER[:2], {**OTHER[2], "zone": "in"}])
+    assert len(zones) == 1
