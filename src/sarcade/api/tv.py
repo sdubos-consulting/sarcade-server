@@ -525,16 +525,18 @@ _TV = """<!doctype html><html lang="fr"><head><meta charset="utf-8">
 <link rel="stylesheet" href="/tv/static/leaflet.css">
 <style>html,body{margin:0;height:100%;overflow:hidden;background:#03152b;color:#eef3f9;-webkit-text-size-adjust:100%;text-size-adjust:100%;
 font-family:Roboto,'Noto Sans','Helvetica Neue',Arial,Helvetica,sans-serif;letter-spacing:normal}
-#pair{display:grid;grid-template-columns:auto auto;justify-content:center;align-items:center;gap:8vw;height:100%;padding:0 8vw;box-sizing:border-box;
+#pair{display:grid;grid-template-columns:auto auto;justify-content:center;align-items:center;grid-gap:8vw;gap:8vw;height:100%;padding:0 8vw;box-sizing:border-box;
 background:radial-gradient(ellipse at 20% 30%,#0a3266 0%,#03152b 60%)}
-.left{display:flex;flex-direction:column;gap:3.2vh;min-width:0}
-.logo{background:#fff;border-radius:22px;padding:14px 24px;width:max-content}.logo img{height:min(20vh,170px);display:block}
-.lead{font-size:min(4.2vh,38px);font-weight:700}
-#code{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:min(16vh,9vw,150px);letter-spacing:.16em;font-weight:800;
+.left{display:flex;flex-direction:column;min-width:0}.left>*+*{margin-top:3.2vh}
+.logo{background:#fff;border-radius:22px;padding:14px 24px;width:max-content}.logo img{height:20vh;max-height:170px;display:block}
+.lead{font-size:4.2vh;font-size:min(4.2vh,38px);font-weight:700}
+#code{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:12vh;font-size:min(16vh,9vw,150px);letter-spacing:.16em;font-weight:800;
 color:#ffb020;border-left:8px solid #ff4d1a;padding-left:3vw;line-height:1}
-.how{font-size:min(2.6vh,24px);line-height:1.45;color:#c4d1e0;max-width:32em}.how b{color:#fff}
+.how{font-size:2.6vh;font-size:min(2.6vh,24px);line-height:1.45;color:#c4d1e0;max-width:32em}.how b{color:#fff}
 #qr{background:#fff;padding:22px;border-radius:24px;box-shadow:0 12px 40px rgba(0,0,0,.35)}#qr img,#qr canvas{display:block}
 #hint{font-size:18px;color:#ffb020;min-height:1em}
+/* Old TV browsers: no gap in flex layouts (Chromium < 84), margins instead. */
+header>*+*{margin-left:22px}.stats>*+*{margin-left:26px}#wx>*+*{margin-left:6px}#legend div>*+*{margin-left:7px}
 @media (max-aspect-ratio:1/1){#pair{grid-template-columns:1fr;justify-items:center;text-align:center;padding:6vh 6vw;align-content:center}
 .left{align-items:center}#code{border-left:0;padding-left:0}}
 /* Day / night of the page (« Envoyer ma vue » pushes the mode of the phone, 30 Oct 2026). */
@@ -543,31 +545,31 @@ color:#ffb020;border-left:8px solid #ff4d1a;padding-left:3vw;line-height:1}
 #app{display:none;height:100%;grid-template-columns:1fr minmax(300px,17%);grid-template-rows:68px 1fr;background:var(--bg);color:var(--fg)}
 #app.nomsg{grid-template-columns:1fr}#app.nomsg aside{display:none}
 .night .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.95) contrast(.9) saturate(.6)}
-header{grid-column:1/-1;display:flex;align-items:center;gap:22px;padding:0 20px 0 10px;background:var(--bg);border-bottom:1px solid var(--line);overflow:hidden;min-width:0}
+header{grid-column:1/-1;display:flex;align-items:center;padding:0 20px 0 10px;background:var(--bg);border-bottom:1px solid var(--line);overflow:hidden;min-width:0}
 .hlogo{background:#fff;border-radius:10px;padding:4px 10px;display:flex}.hlogo img{height:50px;display:block}
 #title{font-size:26px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-.stats{display:flex;align-items:center;gap:26px;margin-left:auto;font-size:19px;color:var(--muted);white-space:nowrap;min-width:0;overflow:hidden}.stats b{color:var(--strong);font-size:22px}
+.stats{display:flex;align-items:center;margin-left:auto;font-size:19px;color:var(--muted);white-space:nowrap;min-width:0;overflow:hidden}.stats b{color:var(--strong);font-size:22px}
 .dot{display:inline-block;width:11px;height:11px;border-radius:50%;background:var(--ok);margin-right:7px}#link.lost{color:var(--red)}#link.lost .dot{background:var(--red)}
 #clock{font-size:34px;font-weight:700;font-variant-numeric:tabular-nums;margin-left:10px;color:var(--strong)}
 #sun{font-size:17px;color:var(--muted);line-height:1.25;font-variant-numeric:tabular-nums}#sun b{color:var(--amber);font-weight:700}
 #map{height:100%;min-width:0}aside{overflow:hidden;padding:12px 14px;border-left:1px solid var(--line);font-size:17px;min-width:0;overflow-wrap:anywhere;word-wrap:break-word}
 h2{font-size:16px;color:var(--h2);text-transform:uppercase;letter-spacing:1px;margin:14px 0 6px}
 .m{padding:6px 0;border-bottom:1px solid var(--line2)}.u{color:var(--amber)}.i{color:var(--red);font-weight:700}
-#wx{display:flex;align-items:center;gap:6px;font-size:28px;font-weight:700;color:var(--strong);margin-left:4px;white-space:nowrap}
+#wx{display:flex;align-items:center;font-size:28px;font-weight:700;color:var(--strong);margin-left:4px;white-space:nowrap}
 .vig{display:inline-block;width:12px;height:12px;border-radius:50%;margin-left:2px}.vig.orange{background:#ff8c1a}.vig.red{background:#ff4d5e}
 .ex{background:#ffb020;color:#03152b;font-weight:800;border-radius:4px;padding:0 5px;font-size:12px}
 .zlab span{display:inline-block;white-space:nowrap;background:var(--panel);color:var(--fg);border-left:4px solid;padding:2px 7px;font-size:14px;border-radius:4px}
 #mapBox{position:relative;min-width:0;height:100%}
 #legend{display:none;position:absolute;left:10px;bottom:10px;z-index:900;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:15px;max-width:40%}
-#legend div{display:flex;align-items:center;gap:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.6}
+#legend div{display:flex;align-items:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.6}
 #legend i{display:inline-block;width:22px;height:4px;border-radius:2px;flex:none}#legend .zr{width:14px;height:14px;border-radius:50%;background:rgba(255,77,94,.15);border:2px solid}
 #from{display:none;position:absolute;right:10px;bottom:10px;z-index:900;background:var(--panel);color:var(--muted);font-size:13px;border-radius:6px;padding:2px 8px}
 .txt span{white-space:nowrap;font-size:16px;font-weight:700;text-shadow:0 0 3px var(--shadow)}
 .lowzoom .rlab{display:none}
 #sos{display:none;background:#ff4d5e;color:#fff;font-weight:800;font-size:16px;border-radius:999px;padding:3px 10px;animation:blink 1.2s steps(2,start) infinite}
 @keyframes blink{to{visibility:hidden}}
-#ident{display:none;position:fixed;inset:0;z-index:3000;align-items:center;justify-content:center;text-align:center;padding:4vw;box-sizing:border-box;
-background:rgba(3,21,43,.92);color:#fff;font-size:min(14vw,22vh);font-weight:800;line-height:1.1;overflow-wrap:anywhere}
+#ident{display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:3000;align-items:center;justify-content:center;text-align:center;padding:4vw;box-sizing:border-box;
+background:rgba(3,21,43,.92);color:#fff;font-size:14vw;font-size:min(14vw,22vh);font-weight:800;line-height:1.1;overflow-wrap:anywhere}
 #alert{display:none;position:fixed;left:0;right:0;top:0;padding:18px;background:#ff4d5e;color:#fff;font-size:30px;font-weight:700;text-align:center;z-index:2000}
 </style></head><body>
 <div id="pair"><div class="left"><div class="logo"><img src="/tv/logo.png" alt="SARCADE"></div>

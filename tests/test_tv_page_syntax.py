@@ -86,3 +86,23 @@ def test_libraries_served_by_sarcade_not_by_a_cdn():
         assert r.status_code == 200 and kind in r.headers["content-type"], name
     assert client.get("/tv/static/../tv.py").status_code == 404
     assert client.get("/tv/static/qrcodejs-LICENSE").status_code == 404
+
+
+def _css_rules(page: str) -> list[str]:
+    css = "".join(re.findall(r"<style>(.*?)</style>", page, flags=re.S))
+    return re.findall(r"[^{}]*\{[^{}]*\}", css)
+
+
+@pytest.mark.parametrize("name", ["_TV", "_APPROVE"])
+def test_tv_css_has_fallbacks_for_old_tv_browsers(name):
+    """1 Nov 2026, 1 h 12: on the Samsung TV the pairing screen showed the
+    logo at full size, a tiny code and no spacing (min(), flex gap)."""
+    for rule in _css_rules(getattr(tv, name)):
+        assert "inset:" not in rule, rule
+        if "display:flex" in rule:
+            assert not re.search(r"(^|[;{])\s*gap:", rule), f"flex gap (Chromium 84+): {rule}"
+        for m in re.finditer(r"([\w-]+):(?:min|max|clamp)\(", rule):
+            prop = m.group(1)
+            before = rule[: m.start()]
+            assert re.search(rf"(^|[;{{]){re.escape(prop)}:(?!(min|max|clamp)\()", before), \
+                f"{prop}: no fallback before min()/max()/clamp() (Chromium 79+): {rule[:120]}"
