@@ -113,6 +113,11 @@ check(c.get(f"{API}/tv/state", headers=TV2).json()["night"] is True, "night mode
 check(c.put(f"{E}/displays/{d2['id']}/view", json={"view": {"lat": 48.8, "lon": 2.1, "zoom": 12, "theme": "x"}}).status_code == 422,
       "unknown mode refused")
 print("TV lot 7 verified")
+# Lot 18: metric distance scale above the legend.
+page = c.get(f"{BASE}/tv").text
+check("L.control.scale({imperial:false" in page and "function placeScale()" in page, "TV page: metric scale above the legend")
+print("TV lot 18 (scale) verified")
+
 
 # Lot 11: « Écrans » button of the map (mine) and « Suivre ma vue » (live).
 check("mine" in c.get(f"{E}/displays").json()[0], "screens say whether they are mine")
@@ -152,3 +157,16 @@ check([m["device_id"] for m in c.get(f"{API}/tv/state", headers=TV).json()["dist
 say("TEL-SOS2", "Fin de détresse — TEL-SOS2", "urgent")
 c.put(f"{E}/displays/{d['id']}/view", json={"view": None})
 print("TV lot 17 (SOS) verified")
+
+# Lot 18: no rule of the page moves a marker icon out of the placement of
+# Leaflet (aircraft shifted south on the TV); diagnostic mode on ?diag=1.
+import re  # noqa: E402
+
+page = c.get(f"{BASE}/tv?diag=1").text
+css = "".join(re.findall(r"<style>(.*?)</style>", page, flags=re.S))
+icons = set(re.findall(r"L\.divIcon\(\{className:'([\w-]+)", page))
+moved = [sel for sel, body in re.findall(r"([^{}]*)\{([^{}]*)\}", css) if re.search(r"(^|;)\s*position\s*:", body)
+         and set(re.findall(r"\.([\w-]+)", re.split(r"[\s>+~]+", sel.strip())[-1])) & icons]
+check({"ac", "sosm"} <= icons and moved == [], "TV page: marker icons placed by Leaflet only")
+check('<div id="diag"></div>' in page and "diag=1" in page, "TV page: diagnostic mode on ?diag=1")
+print("TV lot 18 (ADS-B) verified")
