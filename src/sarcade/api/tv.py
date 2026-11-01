@@ -784,7 +784,8 @@ else if(f.kind==='rectangle'&&pts.length>1)l=L.rectangle([pts[0],pts[1]],st);
 else if(f.kind==='zone')l=L.polygon(pts,st);
 else if(f.kind==='arrow'&&pts.length>1)l=L.featureGroup([L.polyline(pts,st),L.polyline(arrowHead(pts),st)]);
 else l=L.polyline(pts,st);
-if(f.label&&f.kind!=='text')l.bindTooltip(esc(f.label),{permanent:true,direction:'center'});l.addTo(drawL);}}
+// Label of a drawing: the opacity of the drawing, never more (lot 19).
+if(f.label&&f.kind!=='text')l.bindTooltip(esc(f.label),{permanent:true,direction:'center',opacity:o});l.addTo(drawL);}}
 function dest(lat,lon,az,m){const d=m/6371000,t=az*Math.PI/180,p1=lat*Math.PI/180,l1=lon*Math.PI/180;
 const p2=Math.asin(Math.sin(p1)*Math.cos(d)+Math.cos(p1)*Math.sin(d)*Math.cos(t));
 return[p2*180/Math.PI,(l1+Math.atan2(Math.sin(t)*Math.sin(d)*Math.cos(p1),Math.cos(d)-Math.sin(p1)*Math.sin(p2)))*180/Math.PI];}
@@ -831,7 +832,7 @@ function placeScale(){const c=map&&map.getContainer().querySelector('.leaflet-bo
 c.style.bottom=(lg.style.display==='block'?10+lg.offsetHeight+6:10)+'px';}
 function drawRefs(o){refL.clearLayers();for(const r of rData){const hp=r.category==='HIGH_POINT',c=hp?'#7ddc5a':'#c77dff',op=nz(hp?o.high:o.relay,o.ref,1);
 L.circleMarker([r.lat,r.lon],{radius:5,color:c,weight:2,opacity:op,fillOpacity:op*0.6})
-.bindTooltip(esc(r.callsign||r.name),{permanent:true,direction:'right',className:'rlab'}).addTo(refL);}}
+.bindTooltip(esc(r.callsign||r.name),{permanent:true,direction:'right',className:'rlab',opacity:op}).addTo(refL);}}
 // Day / night chosen by the server (mode pushed with the view, else sunrise
 // and sunset); in night the plan tiles are darkened as in the application
 // (not the photos). Messages hidden: the column leaves, the map takes the
@@ -931,8 +932,9 @@ const tk=JSON.stringify(s.traces||[]);if(tk!==layers.tk||nz(o.traces,1)!==trOp){
 if(s.drawings)dData=s.drawings;if(s.bearings){bData=s.bearings;zData=s.zones||[];}if(s.references)rData=s.references;
 if(s.drawings||s.bearings||key!==lastOp){drawFeatures(nz(o.draw,1));drawBearings(nz(o.brg,1));}
 if(s.references||key!==lastOp)drawRefs(o);lastOp=key;fr=s.features_rev||'';rr=s.references_rev||'';
-// One opacity per layer: operators and APRS apart.
-for(const m of Object.values(markers)){const op=nz(m._aprs?o.aprs:o.ops,o.ops,1);m.setStyle({opacity:op,fillOpacity:.9*op});m.bringToFront();}
+// One opacity per layer: operators and APRS apart; the label follows the
+// opacity of its layer, never more opaque than the round (lot 19).
+for(const m of Object.values(markers)){const op=nz(m._aprs?o.aprs:o.ops,o.ops,1),t=m.getTooltip();m.setStyle({opacity:op,fillOpacity:.9*op});if(t)t.setOpacity(op);m.bringToFront();}
 look(s);}
 // SOS on the map (lot 17): one halo per open distress, at the last known
 // position sent by the server whatever the layers; the view of the TV never
