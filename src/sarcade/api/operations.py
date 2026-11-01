@@ -31,6 +31,12 @@ class SettingsPatch(BaseModel):
     settings: dict
 
 
+class ZoneModePatch(BaseModel):
+    actor_id: str = Field(min_length=1, max_length=64)
+    search: str = Field(max_length=120)
+    mode: str = Field(max_length=16)
+
+
 class CloseEvent(BaseModel):
     actor_id: str = Field(min_length=1, max_length=64)
 
@@ -147,6 +153,34 @@ async def update_settings(event_id: str, payload: SettingsPatch, db: Session = D
         new = event_settings.apply_patch(row.settings, payload.settings)
     except event_settings.InvalidSettings as exc:
         raise HTTPException(status_code=422, detail=str(exc))
+    now = datetime.now(UTC)
+    for line in event_settings.logbook_summaries(row.settings, new):
+        db.add(LogbookRow(event_id=event_id, kind="settings", object_id=event_id,
+                          actor_id=payload.actor_id, summary=line, time=now))
+    row.settings = new
+    row.version = (row.version or 0) + 1
+    db.commit()
+    data = event_dict(row)
+    await manager.broadcast(event_id, {"type": "event.settings.updated", "data": data})
+    return data
+
+
+@router.put("/events/{event_id}/zone-mode")
+async def update_zone_mode(event_id: str, payload: ZoneModePatch, db: Session = Depends(get_db)):
+    """Mode of the probable zone of one searched signal (card « Plusieurs
+    zones », points 8 to 11, 1 Nov 2026): « auto », « multi » (Plusieurs
+    balises) or « single » (Une seule balise). Any operator of the event,
+    from the zone window or the bearing sheet; kept in the settings
+    (``zone_modes``) so that every phone and the TV draw the same zones."""
+    row = _event_or_404(db, event_id)
+    if row.ended_at is not None:
+        raise HTTPException(status_code=409, detail="event_closed")
+    try:
+        new = event_settings.set_zone_mode(row.settings, payload.search, payload.mode)
+    except event_settings.InvalidSettings as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    if new == event_settings.merged(row.settings):
+        return event_dict(row)
     now = datetime.now(UTC)
     for line in event_settings.logbook_summaries(row.settings, new):
         db.add(LogbookRow(event_id=event_id, kind="settings", object_id=event_id,

@@ -697,6 +697,131 @@ def test_three_bearings_from_one_place_never_make_a_zone():
     assert len(zones) == 1
 
 
-def test_bearing_kept_by_hand_keeps_one_zone():
+# --- Card « Plusieurs zones : le découpage ne se fait pas quand un relevé
+# est gardé à la main » (points 1 to 13 validated 1 Nov 2026) -------------
+
+def test_capture_two_groups_and_a_bearing_kept_by_hand_make_two_zones():
+    """11 h 09: two groups of three bearings and one kept by hand gave a
+    single circle. Points 1 and 2: the splitting is done, the bearing kept
+    by hand joins the zone it agrees with, else zone 1."""
+    wild = {**_towards(48.78, 2.20, (48.70, 2.05), zone="in"), "id": "hand"}
+    zones = tv.probable_zones([*GOOD[:3], *OTHER, wild])
+    assert len(zones) == 2
+    assert zones[0]["bearings"] == 4 and zones[1]["bearings"] == 3   # wild in zone 1
+    assert zones[0]["excluded"] == []
+    # Kept by hand inside the second group: it stays with its group.
     zones = tv.probable_zones([*GOOD, *OTHER[:2], {**OTHER[2], "zone": "in"}])
-    assert len(zones) == 1
+    assert [z["bearings"] for z in zones] == [4, 3]
+    assert abs(zones[1]["lat"] - SECOND[0]) < 0.004
+
+
+def test_kept_by_hand_joins_the_zone_it_agrees_with():
+    hand = {**_towards(48.90, 1.80, SECOND), "id": "hand", "zone": "in"}
+    split = tv.split_zones([*GOOD, *OTHER, hand])
+    assert len(split) == 2
+    second = next(z for z in split if abs(z["centre"][0] - SECOND[0]) < 0.004)
+    assert second["used"] == 4
+
+
+def test_set_aside_by_hand_stays_set_aside():
+    out = {**_towards(48.70, 2.15, TARGET), "id": "out", "zone": "out"}
+    zones = tv.probable_zones([*GOOD, *OTHER, out])
+    assert len(zones) == 2 and zones[0]["excluded"] == ["out"]
+    assert zones[0]["bearings"] == 4 and zones[1]["bearings"] == 3
+
+
+def test_one_beacon_and_one_wrong_bearing_stay_one_zone():
+    wild = _towards(48.78, 2.20, (48.70, 2.05))
+    [z] = tv.probable_zones([*GOOD, wild])
+    assert "index" not in z and z["excluded"] == [wild["id"]] and z["mode"] == "auto"
+
+
+def test_a_grown_zone_keeps_its_seed_and_the_others(monkeypatch):
+    """11 h 13: bearings far away « agreeing » in their wide cone made the
+    first zone grow beyond 3 km, and the whole splitting was given up.
+    Points 5 and 6: the zone keeps its seed and only the bearings that do
+    not widen it beyond; the zones found are kept."""
+    far = [{**_towards(48.82, 2.50, (48.82, 2.10), length_m=40000), "id": "f1"},
+           {**_towards(48.55, 2.12, (48.80, 2.12), length_m=40000), "id": "f2"}]
+    bearings = [*GOOD, *OTHER, *far]
+    monkeypatch.setattr(tv, "ZONE_MAX_RADIUS_M", 1e9)
+    grown = tv.split_zones(bearings)[0]["radius_m"]
+    assert grown > 1000
+    monkeypatch.setattr(tv, "ZONE_MAX_RADIUS_M", grown - 100)
+    zones = tv.probable_zones(bearings)
+    assert len(zones) == 2
+    assert zones[0]["radius_m"] <= grown - 100
+    assert zones[0]["bearings"] + zones[1]["bearings"] + len(zones[0]["excluded"]) == len(bearings)
+
+
+def test_mode_single_one_circle():
+    zones = tv.probable_zones([*GOOD, *OTHER], {"s": "single"})
+    assert len(zones) == 1 and zones[0]["mode"] == "single"
+    assert zones[0]["label"].startswith("Une seule balise · ±")
+
+
+def test_mode_multi_two_zones_and_its_label():
+    zones = tv.probable_zones([*GOOD, *OTHER], {"s": "multi"})   # key of the signal « S »
+    assert len(zones) == 2
+    assert zones[0]["label"].startswith("Zone 1 · plusieurs balises · ±")
+    assert zones[1]["label"].startswith("Zone 2 · plusieurs balises · ±")
+    auto = tv.probable_zones([*GOOD, *OTHER])
+    assert auto[0]["label"].startswith("Zone 1 · ±") and auto[0]["mode"] == "auto"
+
+
+def test_mode_multi_relaxed_thresholds():
+    """Point 8: in « Plusieurs balises », seeds up to 5 km."""
+    wide = [OTHER[0], {**OTHER[1], "azimuth_deg": OTHER[1]["azimuth_deg"] + 30}, OTHER[2]]
+    assert len(tv.probable_zones([*GOOD, *wide])) == 1
+    assert len(tv.probable_zones([*GOOD, *wide], {"s": "multi"})) == 2
+
+
+# Azimuth errors of the realistic set, the same in the application tests.
+NOISE = (2.1, -1.4, 0.7, -2.6, 1.9, -0.3, 2.8, -1.1, -2.2, 1.3, 0.4, -2.9, 1.6, -0.8, 2.5, -1.7)
+
+
+def test_realistic_two_beacons_ten_km_apart():
+    """Eight positions (four teams, two places each), each hears both
+    beacons about 10 km apart, azimuths within ±3°."""
+    b1, b2 = (48.80, 2.10), (48.83, 2.23)
+    assert 9000 < tv.distance_m(b1, b2) < 11000
+    places = [(48.74, 2.05), (48.76, 2.08), (48.88, 2.02), (48.90, 2.06),
+              (48.86, 2.30), (48.88, 2.27), (48.75, 2.25), (48.74, 2.20)]
+    bearings = []
+    for k, p in enumerate(places):
+        for n, target in ((1, b1), (2, b2)):
+            b = _towards(p[0], p[1], target, length_m=15000)
+            noise = NOISE[2 * k + n - 1]
+            bearings.append({**b, "id": f"{k}-{n}", "azimuth_deg": (b["azimuth_deg"] + noise) % 360})
+    for modes in (None, {"s": "multi"}):
+        zones = tv.probable_zones(bearings, modes)
+        assert len(zones) == 2
+        near = sorted(min(tv.distance_m((z["lat"], z["lon"]), t) for t in (b1, b2)) for z in zones)
+        assert near[-1] < 1500
+    [one] = tv.probable_zones(bearings, {"s": "single"})
+    assert "index" not in one
+
+
+def test_zone_modes_in_the_settings():
+    from sarcade.events import settings as s
+    assert s.merged(None)["zone_modes"] == {}
+    new = s.set_zone_mode(None, "Balise d’Exercice", "multi")
+    assert new["zone_modes"] == {"balise d'exercice": "multi"}
+    assert s.set_zone_mode(new, "balise d'exercice", "auto")["zone_modes"] == {}
+    assert s.apply_patch(None, {"zone_modes": {"Réseau": "single", "x": "auto"}})["zone_modes"] == {"reseau": "single"}
+    import pytest
+    with pytest.raises(s.InvalidSettings):
+        s.set_zone_mode(None, "x", "two")
+    with pytest.raises(s.InvalidSettings):
+        s.apply_patch(None, {"zone_modes": ["x"]})
+    assert s.logbook_summaries(None, new) == ["Zone probable « balise d'exercice » : Plusieurs balises"]
+    # The default is never shared between events.
+    s.merged(None)["zone_modes"]["x"] = "multi"
+    assert s.merged(None)["zone_modes"] == {}
+
+
+def test_apply_view_draws_the_zones_in_the_mode():
+    snap = {"positions": []}
+    on = {"layers": {"bearings": True}}
+    out = tv.apply_view(snap, on, NOW, bearings=[*GOOD, *OTHER], zone_modes={"s": "single"})
+    assert len(out["zones"]) == 1 and out["zones"][0]["mode"] == "single"

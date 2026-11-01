@@ -56,6 +56,16 @@ check(sig[0]["frequency_mhz"] == 121.5 and len(sig) == 3, "default signals of th
 check(c.put(f"{BASE}/api/v0.1/signals/defaults", json={"signals": sig}).status_code == 403,
       "default signals edited by an administrator only")
 
+# Mode of the probable zone of a signal (card « Plusieurs zones », 1 Nov 2026):
+# any operator, kept in the settings for every phone and the TV.
+r = c.put(f"{E}/zone-mode", json={"actor_id": "TEL-01", "search": "121,375 MHz · Balise d’exercice", "mode": "multi"})
+check(r.status_code == 200 and r.json()["settings"]["zone_modes"] == {"121,375 mhz · balise d'exercice": "multi"},
+      "zone mode of a signal kept by the server")
+r = c.put(f"{E}/zone-mode", json={"actor_id": "TEL-01", "search": "121,375 MHz · Balise d'exercice", "mode": "auto"})
+check(r.status_code == 200 and r.json()["settings"]["zone_modes"] == {}, "zone mode back to Auto")
+check(c.put(f"{E}/zone-mode", json={"actor_id": "TEL-01", "search": "x", "mode": "two"}).status_code == 422,
+      "unknown zone mode rejected")
+
 pid = str(uuid.uuid4())
 now = datetime.now(timezone.utc)
 r = c.post(f"{BASE}/api/v0.1/sync", json=[{

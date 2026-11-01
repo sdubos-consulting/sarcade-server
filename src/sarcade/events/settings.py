@@ -47,6 +47,11 @@ DEFAULT_SETTINGS: dict = {
     # Modules enabled for the event (sarcade.modules, 31 Oct 2026); older
     # events keep ADRASEC, new ones get the modules of their event model.
     "modules": ["adrasec"],
+    # Probable zone of each searched signal (card « Plusieurs zones »,
+    # points 8 and 11, 1 Nov 2026): key of the signal (sarcade.tv.search_key)
+    # → « multi » (Plusieurs balises) or « single » (Une seule balise);
+    # absent: « auto ». Set by any operator of the event (zone_mode route).
+    "zone_modes": {},
 }
 
 _BOOL_KEYS = {"low_bandwidth", "tracking_required", "aprs_tx_rf"}
@@ -66,7 +71,8 @@ class InvalidSettings(ValueError):
 
 def merged(stored: dict | None) -> dict:
     """Stored settings completed with the defaults (older events)."""
-    result = {k: (list(v) if isinstance(v, list) else v) for k, v in DEFAULT_SETTINGS.items()}
+    result = {k: (list(v) if isinstance(v, list) else dict(v) if isinstance(v, dict) else v)
+              for k, v in DEFAULT_SETTINGS.items()}
     result.update({k: v for k, v in (stored or {}).items() if k in DEFAULT_SETTINGS})
     return result
 
@@ -95,6 +101,8 @@ def apply_patch(stored: dict | None, patch: dict) -> dict:
                 value = clean(value)
             except InvalidModules as exc:
                 raise InvalidSettings(str(exc)) from exc
+        elif key == "zone_modes":
+            value = clean_zone_modes(value)
         elif key == "basemap":
             if not (isinstance(value, str) and 1 <= len(value) <= 40):
                 raise InvalidSettings("invalid_value:basemap")
@@ -128,6 +136,46 @@ def apply_patch(stored: dict | None, patch: dict) -> dict:
             <= result["tracking_max_interval_s"]):
         raise InvalidSettings("inconsistent_tracking_bounds")
     return result
+
+
+MAX_ZONE_MODES = 100
+SEARCH_MAX = 120
+
+
+def clean_zone_modes(value) -> dict:
+    """{signal: mode}: keys normalised as sarcade.tv.search_key, « auto »
+    left out (it is the default)."""
+    from sarcade.tv import ZONE_MODES, search_key
+    if not isinstance(value, dict) or len(value) > MAX_ZONE_MODES:
+        raise InvalidSettings("invalid_value:zone_modes")
+    out = {}
+    for k, v in value.items():
+        if not isinstance(k, str) or len(k) > SEARCH_MAX or v not in ZONE_MODES:
+            raise InvalidSettings("invalid_value:zone_modes")
+        if v != "auto":
+            out[search_key(k)] = v
+    return out
+
+
+def set_zone_mode(stored: dict | None, search: str, mode: str) -> dict:
+    """Settings with the mode of one searched signal changed."""
+    from sarcade.tv import ZONE_MODES, search_key
+    if not isinstance(search, str) or len(search) > SEARCH_MAX or mode not in ZONE_MODES:
+        raise InvalidSettings("invalid_value:zone_modes")
+    result = merged(stored)
+    modes = dict(result["zone_modes"])
+    key = search_key(search)
+    if mode == "auto":
+        modes.pop(key, None)
+    else:
+        modes[key] = mode
+    if len(modes) > MAX_ZONE_MODES:
+        raise InvalidSettings("invalid_value:zone_modes")
+    result["zone_modes"] = modes
+    return result
+
+
+ZONE_MODE_NAMES = {"auto": "Auto", "multi": "Plusieurs balises", "single": "Une seule balise"}
 
 
 def _clean_list(key: str, value) -> list[str]:
@@ -203,6 +251,11 @@ def logbook_summaries(old: dict | None, new: dict) -> list[str]:
         from sarcade.modules import MODULES
         names = ", ".join(MODULES[m]["label"] for m in after["modules"]) or "aucun (Core seul)"
         lines.append(f"Modules de l'événement : {names}")
+    if before["zone_modes"] != after["zone_modes"]:
+        for key in sorted(set(before["zone_modes"]) | set(after["zone_modes"])):
+            mode = after["zone_modes"].get(key, "auto")
+            if before["zone_modes"].get(key, "auto") != mode:
+                lines.append(f"Zone probable « {key or 'sans signal'} » : {ZONE_MODE_NAMES[mode]}")
     if before["sync_alert_minutes"] != after["sync_alert_minutes"]:
         lines.append(f"Alerte de synchronisation après {after['sync_alert_minutes']} min")
     return lines

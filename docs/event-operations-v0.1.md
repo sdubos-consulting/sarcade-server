@@ -18,6 +18,10 @@ Spécifications : notes « Synchronisation client-serveur » et « Suivi de posi
 | `tracking_default_interval_s` | 30 | 10, 30, 60, 120, 300 ou 600 s |
 | `tracking_min_interval_s` / `tracking_max_interval_s` | 10 / 600 | bornes fixées par le PCO |
 
+| `zone_modes` | `{}` | zone probable par signal recherché : clé du signal (`search_key` : apostrophes unifiées, accents et casse ignorés) → `multi` (Plusieurs balises) ou `single` (Une seule balise) ; absent = `auto` |
+
+`PUT /api/v0.1/events/{event_id}/zone-mode` (corps : `actor_id`, `search`, `mode` = `auto`, `multi` ou `single`) change le mode d'**un** signal ; ouvert à **tout opérateur** de l'événement (pas de droit PCO), depuis la fenêtre d'une zone ou la fiche d'un relevé. Main courante « Zone probable « … » : Plusieurs balises », diffusion `event.settings.updated` ; 422 si le mode est inconnu, 409 après la fin de l'événement.
+
 Chaque changement est inscrit dans la main courante et diffusé (`event.settings.updated`). Les réglages sont figés après la fin de l'événement (409).
 
 ## Dernier contact des appareils

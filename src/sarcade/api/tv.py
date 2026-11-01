@@ -210,14 +210,17 @@ def _traces(db: Session, event_id: str, opts: dict, shown: list[dict]) -> list[d
     return out
 
 
-def _map_layers(db: Session, event_id: str, opts: dict, fr: str | None, rr: str | None) -> dict:
+def _map_layers(db: Session, event_id: str, opts: dict, fr: str | None, rr: str | None,
+                zone_modes: dict | None = None) -> dict:
     """Drawings, bearings and reference sites, sent again only when they
     changed since the revisions the TV already has (``fr``, ``rr``)."""
     out: dict = {}
     layers = opts["layers"]
     count, last = db.execute(select(func.count(), func.max(MapFeatureRow.updated_at))
                              .where(MapFeatureRow.event_id == event_id)).one()
-    out["features_rev"] = _stamp(count, last, layers["drawings"], layers["bearings"])
+    # The zone mode of each signal (card « Plusieurs zones ») changes the
+    # zones: part of the revision, so the TV gets them again at once.
+    out["features_rev"] = _stamp(count, last, layers["drawings"], layers["bearings"], sorted((zone_modes or {}).items()))
     if out["features_rev"] != fr:
         drawings, bearings = [], []
         if layers["drawings"] or layers["bearings"]:
@@ -272,10 +275,11 @@ def state(request: Request, fr: str | None = Query(None, max_length=32), rr: str
     # position, before the layers of the view (never hidden by a filter).
     snap["distress"] = tv.distress_marks(alert_msgs, positions, datetime.now(UTC))
     view = d.get("view")
-    layers = _map_layers(db, event.id, tv.display_options(view), fr, rr)
+    zone_modes = event_settings.merged(event.settings)["zone_modes"]
+    layers = _map_layers(db, event.id, tv.display_options(view), fr, rr, zone_modes)
     snap = tv.apply_view(snap, view, datetime.now(UTC), weather=_weather(db, event.id),
                          drawings=layers.get("drawings"), bearings=layers.get("bearings"),
-                         references=layers.get("references"))
+                         references=layers.get("references"), zone_modes=zone_modes)
     snap["features_rev"], snap["references_rev"] = layers["features_rev"], layers["references_rev"]
     # Traces chosen on the phone (1 Nov 2026).
     snap["traces"] = _traces(db, event.id, tv.display_options(view), snap["positions"])
