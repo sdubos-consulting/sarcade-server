@@ -619,12 +619,12 @@ color:#ffb020;border-left:8px solid #ff4d1a;padding-left:3vw;line-height:1}
 #qr{background:#fff;padding:22px;border-radius:24px;box-shadow:0 12px 40px rgba(0,0,0,.35)}#qr img,#qr canvas{display:block}
 #hint{font-size:18px;color:#ffb020;min-height:1em}
 /* Old TV browsers: no gap in flex layouts (Chromium < 84), margins instead. */
-header>*+*{margin-left:22px}.stats>*+*{margin-left:26px}#wx>*+*{margin-left:6px}#legend div>*+*{margin-left:7px}
+header>*+*{margin-left:28px}.stats>*+*{margin-left:28px}#wx>*+*{margin-left:6px}#legend div>*+*{margin-left:7px}
 @media (max-aspect-ratio:1/1){#pair{grid-template-columns:1fr;justify-items:center;text-align:center;padding:6vh 6vw;align-content:center}
 .left{align-items:center}#code{border-left:0;padding-left:0}}
 /* Day / night of the page (« Envoyer ma vue » pushes the mode of the phone, 30 Oct 2026). */
-#app{--bg:#03152b;--fg:#eef3f9;--strong:#fff;--muted:#c4d1e0;--h2:#b9c6d2;--line:#1e2c38;--line2:#16212b;--panel:rgba(3,21,43,.88);--amber:#ffb020;--red:#ff4d5e;--ok:#3ddc84;--shadow:#000}
-#app.day{--bg:#f4f7fb;--fg:#0b1a2b;--strong:#000;--muted:#2c3e52;--h2:#33475c;--line:#b9c6d2;--line2:#d5dee8;--panel:rgba(255,255,255,.94);--amber:#8a4b00;--red:#b3141f;--ok:#137a3a;--shadow:#fff}
+#app{--sep:rgba(185,198,210,.35);--bg:#03152b;--fg:#eef3f9;--strong:#fff;--muted:#c4d1e0;--h2:#b9c6d2;--line:#1e2c38;--line2:#16212b;--panel:rgba(3,21,43,.88);--amber:#ffb020;--red:#ff4d5e;--ok:#3ddc84;--shadow:#000}
+#app.day{--sep:rgba(44,62,82,.3);--bg:#f4f7fb;--fg:#0b1a2b;--strong:#000;--muted:#2c3e52;--h2:#33475c;--line:#b9c6d2;--line2:#d5dee8;--panel:rgba(255,255,255,.94);--amber:#8a4b00;--red:#b3141f;--ok:#137a3a;--shadow:#fff}
 #app{display:none;height:100%;grid-template-columns:1fr minmax(300px,17%);grid-template-rows:68px 1fr;background:var(--bg);color:var(--fg)}
 #app.nomsg{grid-template-columns:1fr}#app.nomsg aside{display:none}
 .night .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.95) contrast(.9) saturate(.6)}
@@ -633,12 +633,16 @@ header{grid-column:1/-1;display:flex;align-items:center;padding:0 20px 0 10px;ba
 #title{font-size:26px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .stats{display:flex;align-items:center;margin-left:auto;font-size:19px;color:var(--muted);white-space:nowrap;min-width:0;overflow:hidden}.stats b{color:var(--strong);font-size:22px}
 .dot{display:inline-block;width:11px;height:11px;border-radius:50%;background:var(--ok);margin-right:7px}#link.lost{color:var(--red)}#link.lost .dot{background:var(--red)}
-#clock{font-size:34px;font-weight:700;font-variant-numeric:tabular-nums;margin-left:10px;color:var(--strong)}
+#clock{font-size:34px;line-height:36px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--strong)}
 #sun{font-size:17px;color:var(--muted);line-height:1.25;font-variant-numeric:tabular-nums}#sun b{color:var(--amber);font-weight:700}
 #map{height:100%;min-width:0}aside{overflow:hidden;padding:12px 14px;border-left:1px solid var(--line);font-size:17px;min-width:0;overflow-wrap:anywhere;word-wrap:break-word}
 h2{font-size:16px;color:var(--h2);text-transform:uppercase;letter-spacing:1px;margin:14px 0 6px}
 .m{padding:6px 0;border-bottom:1px solid var(--line2)}.u{color:var(--amber)}.i{color:var(--red);font-weight:700}
-#wx{display:flex;align-items:center;font-size:28px;font-weight:700;color:var(--strong);margin-left:4px;white-space:nowrap}
+#wx{display:flex;align-items:center;height:36px;font-size:28px;font-weight:700;color:var(--strong);white-space:nowrap}#wx:empty{display:none}
+/* Top bar (lot 19): the same 28 px between every element, and a thin grey
+   line in the middle of the space between the link and the weather, and
+   between the weather and the clock. */
+#wx,#clock{margin-left:14px;padding-left:14px;border-left:1px solid var(--sep)}
 .vig{display:inline-block;width:12px;height:12px;border-radius:50%;margin-left:2px}.vig.orange{background:#ff8c1a}.vig.red{background:#ff4d5e}
 .ex{background:#ff9f1c;color:#14201a;font-weight:900;border-radius:4px;padding:0 5px;font-size:13px;margin-right:6px}
 /* Probable zone label (maquette validée le 1er novembre 2026): outside the
