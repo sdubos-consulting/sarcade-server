@@ -652,9 +652,10 @@ h2{font-size:16px;color:var(--h2);text-transform:uppercase;letter-spacing:1px;ma
 #legend i{display:inline-block;width:22px;height:4px;border-radius:2px;flex:none}#legend .zr{width:14px;height:14px;border-radius:50%;background:rgba(255,77,94,.15);border:2px solid}
 #legend .zx{border-style:dashed;background:rgba(255,159,28,.12)}#legend .gx{height:0;border-top:3px dashed #9aa3ad;background:none}
 #acAlert{display:none;position:absolute;left:50%;top:10px;-webkit-transform:translateX(-50%);transform:translateX(-50%);z-index:950;background:#ff4d5e;color:#fff;font-weight:800;font-size:18px;border-radius:8px;padding:6px 14px;white-space:nowrap}
-.ac{position:relative}.ac svg{display:block}.acl{position:absolute;white-space:nowrap;font-size:13px;font-weight:700;background:rgba(8,17,28,.85);padding:1px 6px;border-radius:4px}
+.ac svg{display:block}.acl{position:absolute;white-space:nowrap;font-size:13px;font-weight:700;background:rgba(8,17,28,.85);padding:1px 6px;border-radius:4px}
 #acLeg{display:none;position:absolute;left:10px;top:10px;z-index:900;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:5px 10px;font-size:14px}
 #acLeg div{display:flex;align-items:center;white-space:nowrap;line-height:1.55}#acLeg .h{font-weight:700;color:var(--muted)}#acLeg i{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:7px;flex:none}
+#diag{display:none;position:absolute;right:10px;top:10px;z-index:950;background:rgba(3,21,43,.9);color:#fff;border:1px solid #1e2c38;border-radius:8px;padding:6px 10px;font:14px/1.45 ui-monospace,Consolas,monospace;white-space:pre;max-height:80%;overflow:hidden}
 #from{display:none;position:absolute;right:10px;bottom:10px;z-index:900;background:var(--panel);color:var(--muted);font-size:13px;border-radius:6px;padding:2px 8px}
 .txt span{white-space:nowrap;font-size:16px;font-weight:700;text-shadow:0 0 3px var(--shadow)}
 .lowzoom .rlab{display:none}
@@ -662,8 +663,10 @@ h2{font-size:16px;color:var(--h2);text-transform:uppercase;letter-spacing:1px;ma
 @keyframes blink{to{visibility:hidden}}
 /* SOS on the map (lot 17): red pulsing halo and « SOS · nom » above every
    other object; dashed when the position is older than 10 min; red arrow
-   at the edge with the distance when the operator is out of view. */
-.sosm{position:relative}
+   at the edge with the distance when the operator is out of view. Never a
+   « position » rule on a marker icon class (.ac, .sosm, .zlab, .txt): it
+   would undo the absolute placement of Leaflet (lot 18, aircraft shifted
+   south on the TV); tests/test_tv_page_syntax.py checks it. */
 .sosh{position:absolute;left:-34px;top:-34px;width:68px;height:68px;border-radius:50%;border:4px solid #ff1f3d;background:rgba(255,31,61,.18);box-sizing:border-box;
 -webkit-animation:sospulse 1.4s ease-out infinite;animation:sospulse 1.4s ease-out infinite}
 .sosm.old .sosh{border-style:dashed;background:rgba(255,31,61,.08)}
@@ -684,7 +687,7 @@ background:rgba(3,21,43,.92);color:#fff;font-size:14vw;font-size:min(14vw,22vh);
 <div class="lead">Afficher SARCADE sur cet écran</div><div id="code">······</div>
 <div class="how">Dans l'application SARCADE : <b>Outils › Afficher sur une TV</b>, puis scannez le QR code ou saisissez ce code.</div>
 <div id="hint"></div></div><div id="qr"></div></div>
-<div id="app"><header><div class="hlogo"><img src="/tv/logo.png" alt="SARCADE"></div><div id="title"></div><div class="stats"><span><b id="nOps">0</b> opérateurs actifs</span><span><b id="nAprs">0</b> stations APRS</span><span id="link"><span class="dot"></span><span id="linkTxt">Connexion…</span></span></div><span id="sos" title="Détresse en cours">SOS</span><div id="wx"></div><div id="sun"></div><div id="clock">--:--</div></header><div id="mapBox"><div id="map"></div><div id="legend"></div><div id="from"></div><div id="acAlert"></div><div id="sosArrows"></div></div><aside><div id="msgBox"><h2>Messages</h2><div id="msgs"></div></div></aside></div>
+<div id="app"><header><div class="hlogo"><img src="/tv/logo.png" alt="SARCADE"></div><div id="title"></div><div class="stats"><span><b id="nOps">0</b> opérateurs actifs</span><span><b id="nAprs">0</b> stations APRS</span><span id="link"><span class="dot"></span><span id="linkTxt">Connexion…</span></span></div><span id="sos" title="Détresse en cours">SOS</span><div id="wx"></div><div id="sun"></div><div id="clock">--:--</div></header><div id="mapBox"><div id="map"></div><div id="legend"></div><div id="from"></div><div id="acAlert"></div><div id="diag"></div><div id="sosArrows"></div></div><aside><div id="msgBox"><h2>Messages</h2><div id="msgs"></div></div></aside></div>
 <div id="alert"></div><div id="ident"></div>
 <script>
 // Plain old script: if the page script cannot run on this browser (too old
@@ -853,6 +856,9 @@ const AC_SHAPES={"plane":{"d":"M12 2L14 9L22 13L22 15L14 13L13 19L16 21L16 22L12
 const AC_KIND={2:'light',3:'light',4:'airliner',5:'airliner',6:'airliner',8:'heli',9:'glider',10:'balloon',11:'parachute',12:'ulm',14:'drone'};
 const AC_COL={low:'#F57C00',mid:'#1565C0',high:'#607D8B',ground:'#78909C',urgent:'#D32F2F',follow:'#8E24AA'};
 const AC_EST_MAX=60;
+// Diagnostic mode (lot 18): address of the page with ?diag=1, invisible
+// otherwise; kept by location.reload(), the only reload of the page.
+const DIAG=/[?&]diag=1(&|$)/.test(location.search);let acTime=null;
 function acKind(a){return AC_KIND[a.category]||(a.rotorcraft?'heli':'plane');}
 function acBand(a){const f=a.alt_ft;if(a.on_ground||f==null)return 'ground';
 const lo=nz(acOpt.aircraft_low_ft,3000),hi=nz(acOpt.aircraft_high_ft,10000);return f<=lo?'low':(f<=hi?'mid':'high');}
@@ -860,8 +866,10 @@ function acFollowed(id){return (acOpt.aircraft_followed||[]).indexOf(id)>=0;}
 function acRef(a){const t=nz(a.position_time,a.last_contact);return typeof t==='number'?t:null;}
 function acAge(a){const t=acRef(a);return t==null?0:(Date.now()+acOff)/1000-t;}
 function acStale(a){return !a.emergency&&acRef(a)!=null&&acAge(a)>AC_EST_MAX;}
-function acPos(a){const age=Math.max(0,Math.min(acAge(a),AC_EST_MAX));
-if(a.on_ground||!a.speed_kt||a.track_deg==null||!age)return [a.lat,a.lon];
+// Seconds of estimation applied to the last position (0 to 60).
+function acAdv(a){return (a.on_ground||!a.speed_kt||a.track_deg==null)?0:Math.max(0,Math.min(acAge(a),AC_EST_MAX));}
+function acPos(a){const age=acAdv(a);
+if(!age)return [a.lat,a.lon];
 const m=a.speed_kt*0.514444*age,t=a.track_deg*Math.PI/180;
 return [a.lat+m*Math.cos(t)/111320,a.lon+m*Math.sin(t)/(111320*Math.cos(a.lat*Math.PI/180))];}
 function acColor(a){return a.emergency?AC_COL.urgent:AC_COL[acBand(a)];}
@@ -883,7 +891,19 @@ if(a.emergency)urgent.push((a.callsign||String(a.icao24).toUpperCase())+' · '+(
 const b=document.getElementById('acAlert');b.style.display=urgent.length?'block':'none';b.textContent=urgent.length?'ADS-B : '+urgent.join(' — '):'';
 acLegend();if(!acTick)acTick=setInterval(acMove,2000);}
 // Every 2 s: the estimated positions move on, an old position turns grey.
-function acMove(){for(const id in acM){const o=acM[id],st=acStale(o.a);o.m.setLatLng(acPos(o.a));if(st!==o.st){o.st=st;o.m.setIcon(acIcon(o.a,st));}}}
+function acMove(){for(const id in acM){const o=acM[id],st=acStale(o.a);o.m.setLatLng(acPos(o.a));if(st!==o.st){o.st=st;o.m.setIcon(acIcon(o.a,st));}}acDiag();}
+// Diagnostic frame: clock offset, last reception, then per aircraft the
+// callsign, age of the position and estimation applied (seconds).
+function acDiag(){if(!DIAG)return;const b=$('diag');b.style.display='block';
+const sec=function(v){return (v>=0?'+':'')+v.toFixed(1)+' s';};
+let rx='—';if(acTime){const t=new Date(acTime);if(!isNaN(t))rx=t.toLocaleTimeString('fr-FR')+' (il y a '+Math.round((Date.now()+acOff-t.getTime())/1000)+' s)';}
+let h='Diagnostic ADS-B\\nHorloge serveur − TV : '+sec(acOff/1000)+'\\nDernière réception : '+rx+'\\n';
+if(!acOn)h+='Couche avions non affichée';
+else{h+='Indicatif   âge   avance\\n';const rows=aData.slice(0,30);
+for(const a of rows){const id=String(a.callsign||String(a.icao24).toUpperCase()).trim();
+h+=(id+'        ').slice(0,9)+('     '+Math.round(acAge(a))+' s').slice(-7)+('      '+Math.round(acAdv(a))+' s').slice(-8)+'\\n';}
+if(aData.length>rows.length)h+='… et '+(aData.length-rows.length)+' autres';}
+b.textContent=h;}
 // Small legend of the colours while the layer is shown (bands of the view).
 function acLegend(){let b=document.getElementById('acLeg');if(!b){b=document.createElement('div');b.id='acLeg';$('mapBox').appendChild(b);}
 if(!acOn){b.style.display='none';return;}
@@ -894,9 +914,9 @@ b.innerHTML='<div class="h">Aéronefs</div>'+(bd.low?row(AC_COL.low,'Bas · 0 �
 +row(AC_COL.urgent,'Urgence 7700 / 7600 / 7500')+(Object.keys(acTracks).length?row(AC_COL.follow,'Avion suivi'):'');b.style.display='block';}
 const EMERG={emergency:'urgence (7700)',radio_failure:'panne radio (7600)',unlawful_interference:'intervention illicite (7500)'};
 function layers(s){const o=(s.options&&s.options.opacity)||{},key=JSON.stringify(o);
-if(typeof s.aircraft_now==='number')acOff=s.aircraft_now*1000-Date.now();
+if(typeof s.aircraft_now==='number')acOff=s.aircraft_now*1000-Date.now();acTime=s.aircraft_time||null;
 const so=s.options||{},ak=JSON.stringify([s.aircraft||null,s.aircraft_tracks||{},so.aircraft_low_ft,so.aircraft_high_ft,so.aircraft_bands,so.aircraft_ground,so.aircraft_labels,so.aircraft_followed]);
-if(ak!==layers.ak){layers.ak=ak;aData=s.aircraft||[];acTracks=s.aircraft_tracks||{};acOpt=so;acOn=Array.isArray(s.aircraft);drawAircraft();}
+if(ak!==layers.ak){layers.ak=ak;aData=s.aircraft||[];acTracks=s.aircraft_tracks||{};acOpt=so;acOn=Array.isArray(s.aircraft);drawAircraft();}acDiag();
 const tk=JSON.stringify(s.traces||[]);if(tk!==layers.tk||nz(o.traces,1)!==trOp){layers.tk=tk;tData=s.traces||[];trOp=nz(o.traces,1);drawTraces();}
 if(s.drawings)dData=s.drawings;if(s.bearings){bData=s.bearings;zData=s.zones||[];}if(s.references)rData=s.references;
 if(s.drawings||s.bearings||key!==lastOp){drawFeatures(nz(o.draw,1));drawBearings(nz(o.brg,1));}
