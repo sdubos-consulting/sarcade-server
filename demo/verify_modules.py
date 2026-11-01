@@ -78,4 +78,13 @@ check(r.status_code == 422 and "module_inactive" in r.text, "APRS settings refus
 check(c.get(f"{API}/events/{off}/aprs/callsigns").json()["callsigns"] == [], "no APRS station followed without ADRASEC")
 r = c.put(f"{API}/events/{off}/aprs/classes/aprs:F4ABC", json={"actor_id": "PCO", "kind": "fixed"})
 check(r.status_code == 409, "APRS station class refused without ADRASEC")
+box = {"device_id": "TEL-09", "lamin": 48.7, "lomin": 1.9, "lamax": 48.9, "lomax": 2.2}
+r = c.post(f"{API}/events/{off}/adsb/watch", json=box)
+check(r.status_code == 409, "ADS-B refused without ADRASEC")
+r = c.post(f"{API}/events/{fam}/adsb/watch", json=box)
+check(r.status_code == 200 and r.json()["interval_s"] >= 30 and "aircraft" in r.json(), "ADS-B watch accepted with ADRASEC")
+check(c.get(f"{API}/adsb/status").json()["watched_events"] >= 1, "ADS-B status counts the watched event")
+c.post(f"{API}/events/{fam}/adsb/watch", json={**box, "on": False})
+r = c.get(f"{API}/reference-sites", params={"event_id": off})
+check(r.status_code == 200 and r.json() == [], "no reference site for an event without ADRASEC")
 print("modules per event: all checks passed")
