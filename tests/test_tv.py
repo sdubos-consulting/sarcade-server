@@ -442,7 +442,15 @@ def test_nearby_route_every_participant_and_messages_per_screen(sos_client, monk
     v = c.put("/api/v0.1/events/e1/displays/d1/view", json={"view": {**VIEW, "from": "PCO-Web", "messages": True}}).json()
     assert v["view"]["from"] == "PCO-Web"
     [d] = c.get("/api/v0.1/events/e1/displays").json()
-    assert d["messages"] is True and d["view_from"] == "PCO-Web"
+    # 1 Nov 2026: a view sent (or followed) keeps the screen's choice...
+    assert d["messages"] is False and d["view_from"] == "PCO-Web"
+    c.put("/api/v0.1/events/e1/displays/d1/view", json={"view": {**VIEW, "messages": True}, "live": True})
+    [d] = c.get("/api/v0.1/events/e1/displays").json()
+    assert d["messages"] is False
+    # ...unless « Colonne des messages » is ticked on purpose when sending.
+    c.put("/api/v0.1/events/e1/displays/d1/view", json={"view": VIEW, "messages": True})
+    [d] = c.get("/api/v0.1/events/e1/displays").json()
+    assert d["messages"] is True
     assert c.put("/api/v0.1/events/e1/displays/d1/view", json={"view": None}).json() == {"view": None}
 
 
@@ -602,6 +610,22 @@ def test_never_below_three_bearings_kept():
     assert z["bearings"] >= 3 and len(z["excluded"]) <= 1
     [z] = tv.probable_zones([*GOOD[:2], wild1])
     assert z["excluded"] == [] and z["bearings"] == 3
+
+
+def test_same_signal_whatever_the_apostrophe():
+    """1 Nov 2026: « Balise d'exercice » (old bearings) and « Balise d’exercice »
+    (after #77) gave two legends and two probable zones on the TV."""
+    assert tv.search_key("Balise d'exercice") == tv.search_key("  balise  d’EXERCICE ") == tv.search_key("Balise d`exercice")
+    assert tv.search_key("Réseau") == tv.search_key("reseau")
+    a, b = "121,375 MHz · Balise d'exercice", "121,375 MHz · Balise d’exercice"
+    old = _towards(48.75, 2.10, TARGET, search=a, color=tv.search_color(a))
+    new = [_towards(48.80, 2.03, TARGET, search=b, color=tv.search_color(b)),
+           _towards(48.75, 2.04, TARGET, search=b, color=tv.search_color(b))]
+    unified = tv.unify_searches([old, *new])
+    assert {b["search"] for b in unified} == {"121,375 MHz · Balise d’exercice"}
+    assert len({b["color"] for b in unified}) == 1
+    [z] = tv.probable_zones(unified)
+    assert z["bearings"] == 3
 
 
 def test_tv_marks_bearings_set_aside():
