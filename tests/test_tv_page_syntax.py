@@ -124,3 +124,11 @@ def test_exercise_zone_signage():
     assert "dashArray:z.exercise?'14 9':null" in page and '<span class="ex">EX</span>' in page
     assert "EXERCICE" not in page
     assert "Zone d’exercice" in page and "Relevé écarté" in page
+
+
+def test_zone_label_not_larger_than_the_legend():
+    """Card « TV : étiquette de la zone probable trop grosse » (1 Nov 2026):
+    15 px like the legend, details 13 px, « EX » pill not boxed again."""
+    page = tv._TV
+    assert ".zlab>span{" in page and "font-size:15px" in page.split(".zlab>span{")[1].split("}")[0]
+    assert ".zlab .ex{font-size:11px" in page and ".zlab span{" not in page
