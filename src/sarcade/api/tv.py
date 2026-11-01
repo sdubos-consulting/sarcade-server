@@ -956,9 +956,9 @@ const a=s.alert;$('alert').style.display=a?'block':'none';if(a)$('alert').textCo
 sosPill(s);}
 function start(){$('pair').style.display='none';$('app').style.display='grid';map=L.map('map',{zoomControl:false}).setView([46.6,2.4],6);
 map.on('zoomend moveend',declutter);trL=L.layerGroup().addTo(map);acL=L.layerGroup().addTo(map);drawL=L.layerGroup().addTo(map);brgL=L.layerGroup().addTo(map);refL=L.layerGroup().addTo(map);
-const fromCtl=L.control({position:'bottomright'});fromCtl.onAdd=function(){return $('from');};fromCtl.addTo(map);
 map.createPane('sos').style.zIndex=680;sosL=L.layerGroup().addTo(map);map.on('moveend',sosArrows);
 map.on('zoomend',function(){drawTraces();});
+const fromCtl=L.control({position:'bottomright'});fromCtl.onAdd=function(){return $('from');};fromCtl.addTo(map);
 map.on('zoomend',()=>map.getContainer().classList.toggle('lowzoom',map.getZoom()<12));map.getContainer().classList.add('lowzoom');tick();setInterval(tick,1000);refresh();setInterval(refresh,10000);}
 if(token)start();else pair();
 </script></body></html>"""
