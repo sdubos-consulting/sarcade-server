@@ -31,7 +31,8 @@ def test_core_files_do_not_import_modules():
 
 
 def test_old_adrasec_packages_are_gone():
-    assert not (SRC / "aprs").exists() and not (SRC / "reference").exists()
+    # Python files only: a stale __pycache__ may stay in a working copy.
+    assert not list((SRC / "aprs").glob("*.py")) and not list((SRC / "reference").glob("*.py"))
     assert not (SRC / "api" / "aprs.py").exists() and not (SRC / "api" / "signals.py").exists()
 
 
