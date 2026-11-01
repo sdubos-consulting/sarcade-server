@@ -94,3 +94,27 @@ def test_interval_never_under_30_s(monkeypatch):
     assert service.interval_s() == 30
     monkeypatch.setenv("SARCADE_ADSB_INTERVAL_S", "45")
     assert service.interval_s() == 45
+
+
+def test_track_keeps_30_minutes_and_broadcast_stays_short():
+    service.runtime.trails.clear()
+    for k in range(80):
+        a = opensky.parse_states({"states": [state(lon=2.0 + k / 1000)]})
+        out = service.with_trails("e", a, now=1000 + 30 * k)
+    assert len(out[0]["trail"]) == service.TRAIL_POINTS
+    whole = service.track("e", "3C6444")
+    assert len(whole) == service.TRACK_S // 30 + 1 and whole[-1] == [48.8, 2.079]
+
+
+def test_tv_counts_as_a_watcher_and_is_filtered():
+    from sarcade.db.models import EventRow
+    from sarcade import tv as tv_core
+    service.runtime.watchers.clear()
+    service.runtime.latest["e"] = {"time": "t", "aircraft": opensky.parse_states({"states": [state(), [*state(icao="abc")[:13], 11000.0, *state()[14:]]]})}
+    event = EventRow(id="e", settings={"modules": ["adrasec"]})
+    opts = tv_core.clean_display_options({"layers": {"aircraft": True}, "aircraft_max_ft": 10000})
+    out = service.tv_state(event, {"id": "d1", "view": {"lat": 48.8, "lon": 2.1}}, opts)
+    assert [a["icao24"] for a in out["aircraft"]] == ["3c6444"]
+    assert "e" in service.watched_boxes()
+    assert service.tv_state(event, {"id": "d1"}, tv_core.clean_display_options({})) == {}
+    assert service.tv_state(EventRow(id="f", settings={"modules": []}), {"id": "d1"}, opts) == {}

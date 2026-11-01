@@ -2,6 +2,8 @@
 aéronefs sur la carte », 1 Nov 2026)."""
 from __future__ import annotations
 
+import time
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -52,9 +54,17 @@ def latest(event_id: str, db: Session = Depends(get_db)):
     return service.runtime.latest.get(event_id) or {"time": None, "aircraft": []}
 
 
+@router.get("/events/{event_id}/adsb/{icao24}/track")
+def aircraft_track(event_id: str, icao24: str, db: Session = Depends(get_db)):
+    """Where the selected aircraft comes from: up to 30 min of positions."""
+    _adrasec_event(db, event_id)
+    return {"icao24": icao24.lower(), "track": service.track(event_id, icao24)}
+
+
 @router.get("/adsb/status")
 def status():
     r = service.runtime
     return {"enabled": r.enabled, "connected": r.connected, "detail": r.detail,
-            "last_ok_at": r.last_ok_at, "requests_today": r.requests_today,
+            "last_ok_at": r.last_ok_at, "requests_today": r.requests_today, "credits_per_day": 4000,
+            "paused": time.monotonic() < r.paused_until,
             "interval_s": service.interval_s(), "watched_events": len(service.watched_boxes())}

@@ -114,7 +114,8 @@ def test_view_layers_opacity_and_messages():
     assert v["messages"] is False and "extra" not in v
     d = tv.clean_view(VIEW, now=1)
     assert d["layers"] == {"operators": True, "aprs": True, "offline": True, "drawings": True,
-                           "bearings": True, "highpoints": False, "relays": False, "traces": False}
+                           "bearings": True, "highpoints": False, "relays": False, "traces": False,
+                           "aircraft": False}
     assert d["messages"] is True
     # Automatic framing (no view) and views stored before step 2: defaults.
     assert tv.display_options(None)["layers"] == tv.DEFAULT_LAYERS
@@ -514,10 +515,14 @@ def test_name_rename_identify_and_theme_routes(sos_client, monkeypatch):
     assert api._screen(disp(), opts(), now=disp()["identify"] + 20)["identify"] is None
     assert s["identify"]["name"] == "Mur d'images" and s["identify"]["seconds"] == 5
     assert c.post("/api/v0.1/events/e1/displays/zz/identify").status_code == 404
-    c.put(url + "/view", json={"view": {**VIEW, "theme": "day"}})
-    assert api._screen(disp(), opts())["night"] is False
+    # The mode is the screen's (1 Nov 2026, 8 h 27): a view sent never changes it.
+    assert c.put(url + "/theme", json={"theme": "day"}).json() == {"theme": "day"}
     c.put(url + "/view", json={"view": {**VIEW, "theme": "night"}})
+    assert api._screen(disp(), opts())["night"] is False and api._screen(disp(), opts())["theme"] == "day"
+    c.put(url + "/theme", json={"theme": "night"})
     assert api._screen(disp(), opts())["night"] is True
+    assert c.put(url + "/theme", json={"theme": "noon"}).status_code == 422
+    assert any(x.get("theme") == "night" for x in c.get("/api/v0.1/events/e1/displays").json())
     # Pairing without a chosen name keeps the default name of the TV.
     q = c.post("/api/v0.1/tv/pair", json={"name": "TV Sony · 1920×1080"}).json()
     c.post("/api/v0.1/tv/approve", json={"code": q["code"], "event_id": "e1"})
@@ -637,6 +642,30 @@ def test_tv_marks_bearings_set_aside():
     assert set(z["excluded"]) <= {b["id"] for b in bearings}
     from sarcade.api import tv as tv_page
     assert "z.excluded" in tv_page._TV and "b.zone==='out'" in tv_page._TV
+
+
+# --- Aircraft on the TV and theme of a screen (1 Nov 2026) ---------------
+
+def test_aircraft_filters_pushed_with_the_view():
+    o = tv.clean_display_options({"layers": {"aircraft": True}, "aircraft_max_ft": 10000, "aircraft_ground": False})
+    assert o["layers"]["aircraft"] is True and o["aircraft_max_ft"] == 10000 and o["aircraft_min_ft"] == 0
+    assert "aircraft_max_ft" not in tv.clean_display_options({})
+    assert tv.clean_display_options({"layers": {"aircraft": True}, "aircraft_max_ft": -5})["aircraft_max_ft"] is None
+    low = {"alt_ft": 2000}
+    high = {"alt_ft": 37000}
+    ground = {"alt_ft": 300, "on_ground": True}
+    urgent = {"alt_ft": 37000, "emergency": "emergency"}
+    assert [tv.aircraft_shown(a, o) for a in (low, high, ground, urgent)] == [True, False, False, True]
+    assert tv.aircraft_shown({"alt_ft": None}, o) and not tv.aircraft_shown({"alt_ft": None}, {**o, "aircraft_min_ft": 1000})
+
+
+def test_theme_of_the_screen_wins():
+    from sarcade.api import tv as tv_api
+    night = datetime(2026, 11, 1, 23, 0, tzinfo=UTC)
+    snap = {"options": {"theme": "day"}, "weather": None}
+    assert tv_api._screen({"theme": "night"}, snap, now=night.timestamp())["night"] is True
+    assert tv_api._screen({"theme": "day"}, {"options": {"theme": "night"}, "weather": None}, now=night.timestamp())["night"] is False
+    assert tv_api._screen({}, snap, now=night.timestamp())["theme"] == "auto"
 
 
 # --- Several beacons on one signal (option 1 validated 1 Nov 2026, 7 h 44) ---

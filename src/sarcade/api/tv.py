@@ -30,6 +30,8 @@ from sarcade.features import service as features
 from sarcade.weather import service as weather_service
 from sarcade.updates.service import get_value, set_value
 
+from sarcade.modules import hooks as module_hooks
+
 from .deps import get_db
 from .roles import checked_email
 from .serializers import position_dict, reference_site_dict
@@ -278,15 +280,20 @@ def state(request: Request, fr: str | None = Query(None, max_length=32), rr: str
     snap["options"] = {**snap["options"], "messages": d.get("messages", snap["options"]["messages"])}
     snap["default_base"] = _default_base(db, event)
     snap.update(_screen(d, snap))
+    # Layers of the modules (aircraft of ADRASEC...), through the hooks.
+    snap.update(module_hooks.tv_state(event, d, snap["options"]))
     return snap
 
 
 def _screen(d: dict, snap: dict, now: float | None = None) -> dict:
-    """Day / night of the page (pushed with the view, « auto » before any
-    send), name of the screen and the « Identifier » request."""
+    """Day / night of the page: the choice of the screen (Jour, Nuit,
+    Automatique = night from sunset to sunrise; 1 Nov 2026, 8 h 27), the
+    application view no longer changes it; name of the screen and the
+    « Identifier » request."""
     now = now if now is not None else time.time()
     ident = d.get("identify") or 0
-    return {"night": tv.theme_night(snap["options"].get("theme"), snap.get("weather"), datetime.fromtimestamp(now, UTC)),
+    return {"night": tv.theme_night(d.get("theme") or "auto", snap.get("weather"), datetime.fromtimestamp(now, UTC)),
+            "theme": d.get("theme") or "auto",
             "name": d.get("name") or "",
             "identify": ({"id": str(ident), "name": d.get("name") or d.get("code") or "", "seconds": tv.IDENTIFY_S}
                          if now - ident < IDENTIFY_WINDOW_S else None)}
@@ -335,6 +342,7 @@ def list_displays(event_id: str, request: Request, db: Session = Depends(get_db)
                     "last_seen": tv.seen.get(d["id"]), "created": d["created"], "expires": d["expires"],
                     "active": active, "owner": d.get("owner"), "revoked": bool(d.get("revoked")),
                     "messages": d.get("messages", tv.display_options(view or None)["messages"]),
+                    "theme": d.get("theme") or "auto",
                     "view_from": view.get("from") or None,
                     "alert": active and _alert(db, event_id, d)["alert"] is not None,
                     "can_clear_alert": _may_clear(d, email, admin),
@@ -454,6 +462,27 @@ def display_messages(event_id: str, display_id: str, body: MessagesIn, request: 
                               summary=f"{text} ({_label(d.get('name'), d.get('code'))})", time=datetime.now(UTC)))
             db.commit()
             return {"messages": body.messages}
+    raise HTTPException(status_code=404, detail="display_not_found")
+
+
+class ThemeIn(BaseModel):
+    theme: str = Field(pattern="^(day|night|auto)$")
+
+
+@router.put("/api/v0.1/events/{event_id}/displays/{display_id}/theme")
+def display_theme(event_id: str, display_id: str, body: ThemeIn, request: Request, db: Session = Depends(get_db)):
+    """« Jour / Nuit / Automatique » in the settings of a screen (1 Nov 2026,
+    8 h 27): kept by the screen, whatever the view sent."""
+    displays = _displays(db)
+    for d in displays:
+        if d["id"] == display_id and d.get("event_id") == event_id and not d.get("revoked"):
+            d["theme"] = body.theme
+            set_value(db, KEY, displays)
+            word = {"day": "Jour", "night": "Nuit", "auto": "Automatique"}[body.theme]
+            db.add(LogbookRow(event_id=event_id, kind="display", object_id=None, actor_id=_actor(request),
+                              summary=f"Mode de l'écran : {word} ({_label(d.get('name'), d.get('code'))})", time=datetime.now(UTC)))
+            db.commit()
+            return {"theme": body.theme}
     raise HTTPException(status_code=404, detail="display_not_found")
 
 
@@ -609,6 +638,8 @@ h2{font-size:16px;color:var(--h2);text-transform:uppercase;letter-spacing:1px;ma
 #legend div{display:flex;align-items:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.6}
 #legend i{display:inline-block;width:22px;height:4px;border-radius:2px;flex:none}#legend .zr{width:14px;height:14px;border-radius:50%;background:rgba(255,77,94,.15);border:2px solid}
 #legend .zx{border-style:dashed;background:rgba(255,159,28,.12)}#legend .gx{height:0;border-top:3px dashed #9aa3ad;background:none}
+#acAlert{display:none;position:absolute;left:50%;top:10px;-webkit-transform:translateX(-50%);transform:translateX(-50%);z-index:950;background:#ff4d5e;color:#fff;font-weight:800;font-size:18px;border-radius:8px;padding:6px 14px;white-space:nowrap}
+.ac{position:relative}.ac svg{display:block}.acl{position:absolute;left:30px;top:5px;white-space:nowrap;font-size:13px;font-weight:700;background:rgba(8,17,28,.85);padding:1px 6px;border-radius:4px}
 #from{display:none;position:absolute;right:10px;bottom:10px;z-index:900;background:var(--panel);color:var(--muted);font-size:13px;border-radius:6px;padding:2px 8px}
 .txt span{white-space:nowrap;font-size:16px;font-weight:700;text-shadow:0 0 3px var(--shadow)}
 .lowzoom .rlab{display:none}
@@ -622,7 +653,7 @@ background:rgba(3,21,43,.92);color:#fff;font-size:14vw;font-size:min(14vw,22vh);
 <div class="lead">Afficher SARCADE sur cet écran</div><div id="code">······</div>
 <div class="how">Dans l'application SARCADE : <b>Outils › Afficher sur une TV</b>, puis scannez le QR code ou saisissez ce code.</div>
 <div id="hint"></div></div><div id="qr"></div></div>
-<div id="app"><header><div class="hlogo"><img src="/tv/logo.png" alt="SARCADE"></div><div id="title"></div><div class="stats"><span><b id="nOps">0</b> opérateurs actifs</span><span><b id="nAprs">0</b> stations APRS</span><span id="link"><span class="dot"></span><span id="linkTxt">Connexion…</span></span></div><span id="sos" title="Détresse en cours">SOS</span><div id="wx"></div><div id="sun"></div><div id="clock">--:--</div></header><div id="mapBox"><div id="map"></div><div id="legend"></div><div id="from"></div></div><aside><div id="msgBox"><h2>Messages</h2><div id="msgs"></div></div></aside></div>
+<div id="app"><header><div class="hlogo"><img src="/tv/logo.png" alt="SARCADE"></div><div id="title"></div><div class="stats"><span><b id="nOps">0</b> opérateurs actifs</span><span><b id="nAprs">0</b> stations APRS</span><span id="link"><span class="dot"></span><span id="linkTxt">Connexion…</span></span></div><span id="sos" title="Détresse en cours">SOS</span><div id="wx"></div><div id="sun"></div><div id="clock">--:--</div></header><div id="mapBox"><div id="map"></div><div id="legend"></div><div id="from"></div><div id="acAlert"></div></div><aside><div id="msgBox"><h2>Messages</h2><div id="msgs"></div></div></aside></div>
 <div id="alert"></div><div id="ident"></div>
 <script>
 // Plain old script: if the page script cannot run on this browser (too old
@@ -778,7 +809,23 @@ function drawTraces(){if(!trL)return;trL.clearLayers();const dots=map&&map.getZo
 for(const t of tData){const col=t.aprs?'#ffb020':'#3dd6f5';
 L.polyline(t.points,{color:col,weight:5,opacity:.8*trOp,lineCap:'round',lineJoin:'round',interactive:false}).addTo(trL);
 if(dots)for(const p of t.points)L.circleMarker(p,{radius:3,color:'#ffffff',weight:1,fillColor:'#b71c1c',fillOpacity:trOp,opacity:trOp,interactive:false}).addTo(trL);}}
+// Aircraft (ADS-B, module ADRASEC, 1 Nov 2026): icon turned to the track,
+// colour by altitude (low = more visible), label only for an emergency or
+// when the application shows the callsigns; red banner for 7700/7600/7500.
+let acL,aData=[],acLabels=false;
+const AC_PATH='M12 2l2 7 8 4v2l-8-2-1 6 3 2v1l-4-1-4 1v-1l3-2-1-6-8 2v-2l8-4z';
+function acColor(a){if(a.emergency)return '#ff4d5e';const f=a.alt_ft;if(f==null)return '#8aa4bf';return f<=3000?'#ffb020':(f<=10000?'#3dd6f5':'#8aa4bf');}
+function drawAircraft(){if(!acL)return;acL.clearLayers();const urgent=[];
+for(const a of aData){const col=acColor(a),deg=a.track_deg==null?0:a.track_deg;
+if(a.trail&&a.trail.length>1)L.polyline(a.trail,{color:col,weight:2,opacity:.55,interactive:false}).addTo(acL);
+const lab=(a.emergency||acLabels)?'<span class="acl" style="color:'+col+'">'+esc(a.callsign||String(a.icao24).toUpperCase())+(a.alt_ft!=null?' · '+a.alt_ft+' ft':'')+'</span>':'';
+L.marker([a.lat,a.lon],{interactive:false,icon:L.divIcon({className:'ac',iconSize:null,iconAnchor:[14,14],
+html:'<svg width="28" height="28" viewBox="0 0 24 24" style="-webkit-transform:rotate('+deg+'deg);transform:rotate('+deg+'deg)"><path d="'+AC_PATH+'" fill="'+col+'" stroke="#fff" stroke-width=".8"/></svg>'+lab})}).addTo(acL);
+if(a.emergency)urgent.push((a.callsign||String(a.icao24).toUpperCase())+' · '+(EMERG[a.emergency]||a.squawk));}
+const b=document.getElementById('acAlert');b.style.display=urgent.length?'block':'none';b.textContent=urgent.length?'ADS-B : '+urgent.join(' — '):'';}
+const EMERG={emergency:'urgence (7700)',radio_failure:'panne radio (7600)',unlawful_interference:'intervention illicite (7500)'};
 function layers(s){const o=(s.options&&s.options.opacity)||{},key=JSON.stringify(o);
+const ak=JSON.stringify(s.aircraft||[])+(s.options&&s.options.aircraft_labels);if(ak!==layers.ak){layers.ak=ak;aData=s.aircraft||[];acLabels=!!(s.options&&s.options.aircraft_labels);drawAircraft();}
 const tk=JSON.stringify(s.traces||[]);if(tk!==layers.tk||nz(o.traces,1)!==trOp){layers.tk=tk;tData=s.traces||[];trOp=nz(o.traces,1);drawTraces();}
 if(s.drawings)dData=s.drawings;if(s.bearings){bData=s.bearings;zData=s.zones||[];}if(s.references)rData=s.references;
 if(s.drawings||s.bearings||key!==lastOp){drawFeatures(nz(o.draw,1));drawBearings(nz(o.brg,1));}
@@ -811,7 +858,7 @@ $('msgs').innerHTML=s.messages.slice(-14).reverse().map(m=>'<div class="m '+(m.p
 const a=s.alert;$('alert').style.display=a?'block':'none';if(a)$('alert').textContent=a.sender_id+' : '+a.body;
 const sos=s.sos||[];$('sos').style.display=sos.length?'inline-block':'none';$('sos').title='Détresse en cours : '+sos.join(', ');}
 function start(){$('pair').style.display='none';$('app').style.display='grid';map=L.map('map',{zoomControl:false}).setView([46.6,2.4],6);
-map.on('zoomend moveend',declutter);trL=L.layerGroup().addTo(map);drawL=L.layerGroup().addTo(map);brgL=L.layerGroup().addTo(map);refL=L.layerGroup().addTo(map);
+map.on('zoomend moveend',declutter);trL=L.layerGroup().addTo(map);acL=L.layerGroup().addTo(map);drawL=L.layerGroup().addTo(map);brgL=L.layerGroup().addTo(map);refL=L.layerGroup().addTo(map);
 map.on('zoomend',function(){drawTraces();});
 map.on('zoomend',()=>map.getContainer().classList.toggle('lowzoom',map.getZoom()<12));map.getContainer().classList.add('lowzoom');tick();setInterval(tick,1000);refresh();setInterval(refresh,10000);}
 if(token)start();else pair();

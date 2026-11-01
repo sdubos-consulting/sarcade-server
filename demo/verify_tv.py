@@ -3,7 +3,7 @@ public address noted, codes of the same network offered to PCO only (none
 without a checked email), messages column of one screen at once, view with
 the opacity per layer and its sender, probable zone and crossings computed
 by the server, colours of the beacons, default view; lot 7: name of each
-screen, « Identifier », day / night mode pushed with the view.
+screen, « Identifier », day / night mode chosen per screen.
 
 Usage: SARCADE_URL=http://localhost:8000 python demo/verify_tv.py
 """
@@ -104,10 +104,12 @@ check(d2["name"] == "Salle PCO" and d2["last_seen"], "list: name and last activi
 check(c.put(f"{E}/displays/{d2['id']}/name", json={"name": "Mur d'images"}).json() == {"name": "Mur d'images"}, "renamed")
 check(c.post(f"{E}/displays/{d2['id']}/identify").status_code == 200, "identify asked")
 check(c.get(f"{API}/tv/state", headers=TV2).json()["identify"]["name"] == "Mur d'images", "TV shows its name")
-c.put(f"{E}/displays/{d2['id']}/view", json={"view": {"lat": 48.8, "lon": 2.1, "zoom": 12, "theme": "day"}})
-check(c.get(f"{API}/tv/state", headers=TV2).json()["night"] is False, "day mode pushed with the view")
+# Mode chosen per screen (1 Nov 2026, 8 h 27): a view sent no longer changes it.
+c.put(f"{E}/displays/{d2['id']}/theme", json={"theme": "day"})
 c.put(f"{E}/displays/{d2['id']}/view", json={"view": {"lat": 48.8, "lon": 2.1, "zoom": 12, "theme": "night"}})
-check(c.get(f"{API}/tv/state", headers=TV2).json()["night"] is True, "night mode pushed with the view")
+check(c.get(f"{API}/tv/state", headers=TV2).json()["night"] is False, "day mode of the screen kept after a view")
+c.put(f"{E}/displays/{d2['id']}/theme", json={"theme": "night"})
+check(c.get(f"{API}/tv/state", headers=TV2).json()["night"] is True, "night mode of the screen")
 check(c.put(f"{E}/displays/{d2['id']}/view", json={"view": {"lat": 48.8, "lon": 2.1, "zoom": 12, "theme": "x"}}).status_code == 422,
       "unknown mode refused")
 print("TV lot 7 verified")
