@@ -19,5 +19,6 @@ def register() -> None:
     hooks.routers.extend([api_aprs.router, api_reference.router, api_signals.router, api_adsb.router])
     hooks.startups.append(links.start)
     hooks.startups.append(adsb.start)
+    hooks.tv_state_providers.append(adsb.tv_state)
     hooks.position_hooks.append(service.queue_transmission)
     hooks.link_providers.append(lambda: [service.runtime.aprs_is, service.runtime.radio])

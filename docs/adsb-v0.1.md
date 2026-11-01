@@ -29,7 +29,8 @@ par OpenSky.
   l'application qui affiche la couche le rappelle chaque minute (expiration
   120 s). Réponse : dernière liste connue.
 - `GET /api/v0.1/events/{id}/adsb` : `{time, aircraft:[…]}`.
-- `GET /api/v0.1/adsb/status` : état de la liaison, requêtes du jour.
+- `GET /api/v0.1/events/{id}/adsb/{icao24}/track` : trace connue de l'aéronef (30 min au plus), pour l'aéronef sélectionné.
+- `GET /api/v0.1/adsb/status` : état de la liaison, requêtes du jour, pause de quota.
 - Temps réel : `adsb.updated` (liste complète), `adsb.emergency` (une fois par
   aéronef et code).
 
@@ -46,3 +47,10 @@ Codes 7700 / 7600 / 7500 : inscrits une fois à la main courante (alerte PCO).
 Les aéronefs sans ADS-B (militaires, État, ULM non équipés) n'apparaissent
 pas. Couverture selon les récepteurs bénévoles d'OpenSky. Usage non
 commercial : à vérifier avant SARCADE Pro.
+
+## Smart TV
+
+La couche « Aéronefs » de la TV suit les réglages de l'application envoyés avec la vue
+(`layers.aircraft`, `aircraft_min_ft`, `aircraft_max_ft`, `aircraft_ground`, `aircraft_labels`).
+Un écran qui l'affiche compte comme une application qui regarde (zone d'environ 50 km autour de sa vue).
+Couleur selon l'altitude, étiquette seulement en cas d'urgence (ou indicatifs demandés), bandeau rouge pour 7700 / 7600 / 7500.

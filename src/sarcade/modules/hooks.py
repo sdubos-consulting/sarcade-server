@@ -9,7 +9,8 @@ The Core never imports a module. A module fills these registries in its
 - ``position_hooks``: ``hook(settings, device, lat, lon, at)`` after each
   position received from a terminal (APRS transmission, for instance);
 - ``link_providers``: ``provider() -> list`` of link states shown by the
-  diagnostics (each has ``enabled``, ``connected``... like the APRS links).
+  diagnostics (each has ``enabled``, ``connected``... like the APRS links);
+- ``tv_state_providers``: extra layers in the state of a TV.
 
 Without any module the Core runs the same, with empty registries.
 """
@@ -24,6 +25,9 @@ routers: list = []
 startups: list[Callable[[list], None]] = []
 position_hooks: list[Callable] = []
 link_providers: list[Callable[[], list]] = []
+# ``provider(event, display, options) -> dict`` merged into the state of a
+# TV (aircraft of the ADRASEC module, for instance).
+tv_state_providers: list[Callable] = []
 
 
 def start(background_tasks: list) -> None:
@@ -38,6 +42,16 @@ def position_received(settings: dict | None, device, lat: float, lon: float, at)
             hook(settings, device, lat, lon, at)
         except Exception:  # noqa: BLE001 - logged, the position is kept
             log.exception("position hook failed")
+
+
+def tv_state(event, display: dict, options: dict) -> dict:
+    out: dict = {}
+    for provider in tv_state_providers:
+        try:
+            out.update(provider(event, display, options) or {})
+        except Exception:  # noqa: BLE001 - the TV keeps its other layers
+            log.exception("tv state provider failed")
+    return out
 
 
 def links() -> list:

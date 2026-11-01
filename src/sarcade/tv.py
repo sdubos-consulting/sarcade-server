@@ -258,12 +258,16 @@ def clean_view(view: dict | None, now: float | None = None) -> dict | None:
 # --- « Envoyer ma vue », step 2: layers, opacities, messages panel --------
 
 DEFAULT_LAYERS = {"operators": True, "aprs": True, "offline": True, "drawings": True, "bearings": True,
-                  "highpoints": False, "relays": False, "traces": False}
+                  "highpoints": False, "relays": False, "traces": False, "aircraft": False}
 # Traces of the phone shown on the TV (1 Nov 2026): duration in minutes and
 # traces pinned one by one (ids), as in « Fond et affichage ».
 TRACE_WINDOWS = (15, 30, 60, 120, 180, 360, 720, 1440)
 MAX_TRACE_IDS = 50
 MAX_TRACE_POINTS = 500
+# Aircraft (ADS-B, module ADRASEC) pushed with the view (1 Nov 2026): the
+# filters of the application; no ADS-B setting of its own on the TV.
+ALTITUDE_MAX_FT = 60_000
+AIRCRAFT_DEFAULTS = {"aircraft_min_ft": 0, "aircraft_max_ft": None, "aircraft_ground": False, "aircraft_labels": False}
 # One opacity per layer (card « Panneau des couches, opacité incohérente »,
 # 30 Oct 2026): APRS, high points and relays apart; a view of the former
 # format (ops, draw, brg, ref) gives its group value to the new keys.
@@ -316,7 +320,37 @@ def clean_display_options(view: dict) -> dict:
     out = {"layers": out_layers, "opacity": out_opacity, "messages": messages, "from": sender.strip(), "theme": theme}
     if out_layers["traces"] or ids:
         out.update(traces_window=window, traces_ids=list(dict.fromkeys(ids)))
+    if out_layers["aircraft"]:
+        out.update(clean_aircraft_filters(view))
     return out
+
+
+def clean_aircraft_filters(view: dict) -> dict:
+    """Altitude range (« max » None = no ceiling), aircraft on the ground,
+    callsigns; out-of-range values fall back to the defaults."""
+    out = dict(AIRCRAFT_DEFAULTS)
+    lo, hi = view.get("aircraft_min_ft", 0), view.get("aircraft_max_ft")
+    if isinstance(lo, int) and not isinstance(lo, bool) and 0 <= lo <= ALTITUDE_MAX_FT:
+        out["aircraft_min_ft"] = lo
+    if hi is None or (isinstance(hi, int) and not isinstance(hi, bool) and out["aircraft_min_ft"] <= hi <= ALTITUDE_MAX_FT):
+        out["aircraft_max_ft"] = hi
+    for key in ("aircraft_ground", "aircraft_labels"):
+        if isinstance(view.get(key), bool):
+            out[key] = view[key]
+    return out
+
+
+def aircraft_shown(a: dict, opts: dict) -> bool:
+    """Filters of the application: an emergency squawk is always shown."""
+    if a.get("emergency"):
+        return True
+    if a.get("on_ground"):
+        return bool(opts.get("aircraft_ground"))
+    alt = a.get("alt_ft")
+    lo, hi = opts.get("aircraft_min_ft") or 0, opts.get("aircraft_max_ft")
+    if alt is None:
+        return lo == 0
+    return alt >= lo and (hi is None or alt <= hi)
 
 
 def display_options(view: dict | None) -> dict:

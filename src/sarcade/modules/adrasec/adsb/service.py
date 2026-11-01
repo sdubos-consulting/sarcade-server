@@ -34,6 +34,10 @@ MIN_INTERVAL_S = 30
 WATCH_TTL_S = 120
 MARGIN_DEG = 0.2
 TRAIL_POINTS = 10
+# Where the aircraft comes from (1 Nov 2026, 8 h 21): 30 min kept while the
+# layer is shown; long trace for the selected aircraft only.
+TRACK_S = 30 * 60
+TV_WATCH_BOX_DEG = (0.45, 0.70)   # about 50 km around the view of a TV
 EMERGENCY_LABELS = {"emergency": "urgence (7700)", "radio_failure": "panne radio (7600)",
                     "unlawful_interference": "intervention illicite (7500)"}
 
@@ -91,19 +95,46 @@ def watched_boxes(now: float | None = None) -> dict[str, tuple[float, float, flo
     return out
 
 
-def with_trails(event_id: str, aircraft: list[dict]) -> list[dict]:
+def with_trails(event_id: str, aircraft: list[dict], now: float | None = None) -> list[dict]:
+    """Keeps up to TRACK_S of positions per aircraft; the broadcast carries
+    the last TRAIL_POINTS (see :func:`track` for the whole)."""
+    now = time.time() if now is None else now
     trails = runtime.trails.setdefault(event_id, {})
     seen = set()
     for a in aircraft:
         key = a["icao24"]
         seen.add(key)
-        trail = trails.setdefault(key, deque(maxlen=TRAIL_POINTS))
-        if not trail or trail[-1] != (a["lat"], a["lon"]):
-            trail.append((a["lat"], a["lon"]))
-        a["trail"] = [list(p) for p in trail]
+        trail = trails.setdefault(key, deque(maxlen=TRACK_S // MIN_INTERVAL_S + 10))
+        if not trail or (trail[-1][1], trail[-1][2]) != (a["lat"], a["lon"]):
+            trail.append((now, a["lat"], a["lon"]))
+        while trail and now - trail[0][0] > TRACK_S:
+            trail.popleft()
+        a["trail"] = [[p[1], p[2]] for p in list(trail)[-TRAIL_POINTS:]]
     for key in set(trails) - seen:
         trails.pop(key, None)
     return aircraft
+
+
+def track(event_id: str, icao24: str) -> list[list[float]]:
+    """Whole known trace of one aircraft (up to 30 min)."""
+    return [[p[1], p[2]] for p in runtime.trails.get(event_id, {}).get(icao24.lower(), ())]
+
+
+def tv_state(event, display: dict, options: dict) -> dict:
+    """Aircraft of a TV that shows the layer: the screen counts as a watcher
+    (OpenSky is asked even if no phone shows the layer), filtered as the
+    application that sent the view."""
+    if not options.get("layers", {}).get("aircraft") or not modules.enabled(event.settings, "adrasec"):
+        return {}
+    view = display.get("view") or {}
+    lat, lon = view.get("lat"), view.get("lon")
+    if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
+        dlat, dlon = TV_WATCH_BOX_DEG
+        watch(event.id, f"tv:{display['id']}", (lat - dlat, lon - dlon, lat + dlat, lon + dlon))
+    from sarcade import tv as tv_core
+    latest = runtime.latest.get(event.id) or {}
+    shown = [a for a in latest.get("aircraft") or [] if tv_core.aircraft_shown(a, options)]
+    return {"aircraft": shown, "aircraft_time": latest.get("time")}
 
 
 def new_emergencies(event_id: str, aircraft: list[dict]) -> list[dict]:
