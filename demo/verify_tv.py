@@ -147,3 +147,8 @@ check([m["device_id"] for m in c.get(f"{API}/tv/state", headers=TV).json()["dist
 say("TEL-SOS2", "Fin de détresse — TEL-SOS2", "urgent")
 c.put(f"{E}/displays/{d['id']}/view", json={"view": None})
 print("TV lot 17 (SOS) verified")
+
+# Lot 18: metric distance scale above the legend.
+page = c.get(f"{BASE}/tv").text
+check("L.control.scale({imperial:false" in page and "function placeScale()" in page, "TV page: metric scale above the legend")
+print("TV lot 18 (scale) verified")

@@ -651,6 +651,10 @@ h2{font-size:16px;color:var(--h2);text-transform:uppercase;letter-spacing:1px;ma
 #legend div{display:flex;align-items:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.6}
 #legend i{display:inline-block;width:22px;height:4px;border-radius:2px;flex:none}#legend .zr{width:14px;height:14px;border-radius:50%;background:rgba(255,77,94,.15);border:2px solid}
 #legend .zx{border-style:dashed;background:rgba(255,159,28,.12)}#legend .gx{height:0;border-top:3px dashed #9aa3ad;background:none}
+/* Distance scale (lot 18): metric only, bottom left just above the legend
+   (placeScale), readable from afar: thick line, 15 px, dark background. */
+#map .leaflet-control-scale{margin:0 0 0 10px}
+#map .leaflet-control-scale-line{border:4px solid #fff;border-top:0;color:#fff;background:rgba(3,21,43,.88);font-size:15px;font-weight:700;line-height:1.35;padding:2px 8px 1px;text-shadow:none}
 #acAlert{display:none;position:absolute;left:50%;top:10px;-webkit-transform:translateX(-50%);transform:translateX(-50%);z-index:950;background:#ff4d5e;color:#fff;font-weight:800;font-size:18px;border-radius:8px;padding:6px 14px;white-space:nowrap}
 .ac{position:relative}.ac svg{display:block}.acl{position:absolute;white-space:nowrap;font-size:13px;font-weight:700;background:rgba(8,17,28,.85);padding:1px 6px;border-radius:4px}
 #acLeg{display:none;position:absolute;left:10px;top:10px;z-index:900;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:5px 10px;font-size:14px}
@@ -815,7 +819,11 @@ const real=zData.some(z=>z.lat!=null&&!z.exercise),exo=zData.some(z=>z.lat!=null
 $('legend').innerHTML=keys.map(k=>'<div><i style="background:'+by[k].color+'"></i>'+(by[k].ex?'<span class="ex">EX</span>':'')+esc(k||'Sans signal')+'</div>').join('')
 +(real?'<div><i class="zr" style="border-color:#ff4d5e"></i>Zone probable (recherche réelle)</div>':'')
 +(exo?'<div><i class="zr zx" style="border-color:#ff9f1c"></i>Zone d’exercice</div>':'')
-+(out?'<div><i class="gx"></i>Relevé écarté</div>':'');$('legend').style.display=keys.length?'block':'none';}
++(out?'<div><i class="gx"></i>Relevé écarté</div>':'');$('legend').style.display=keys.length?'block':'none';placeScale();}
+// The scale stays just above the legend, whatever its height (or at the
+// bottom when the legend is hidden): never covered.
+function placeScale(){const c=map&&map.getContainer().querySelector('.leaflet-bottom.leaflet-left'),lg=$('legend');if(!c)return;
+c.style.bottom=(lg.style.display==='block'?10+lg.offsetHeight+6:10)+'px';}
 function drawRefs(o){refL.clearLayers();for(const r of rData){const hp=r.category==='HIGH_POINT',c=hp?'#7ddc5a':'#c77dff',op=nz(hp?o.high:o.relay,o.ref,1);
 L.circleMarker([r.lat,r.lon],{radius:5,color:c,weight:2,opacity:op,fillOpacity:op*0.6})
 .bindTooltip(esc(r.callsign||r.name),{permanent:true,direction:'right',className:'rlab'}).addTo(refL);}}
@@ -954,6 +962,7 @@ const a=s.alert;$('alert').style.display=a?'block':'none';if(a)$('alert').textCo
 sosPill(s);}
 function start(){$('pair').style.display='none';$('app').style.display='grid';map=L.map('map',{zoomControl:false}).setView([46.6,2.4],6);
 map.on('zoomend moveend',declutter);trL=L.layerGroup().addTo(map);acL=L.layerGroup().addTo(map);drawL=L.layerGroup().addTo(map);brgL=L.layerGroup().addTo(map);refL=L.layerGroup().addTo(map);
+L.control.scale({imperial:false,maxWidth:200,position:'bottomleft'}).addTo(map);placeScale();map.on('resize',placeScale);
 map.createPane('sos').style.zIndex=680;sosL=L.layerGroup().addTo(map);map.on('moveend',sosArrows);
 map.on('zoomend',function(){drawTraces();});
 map.on('zoomend',()=>map.getContainer().classList.toggle('lowzoom',map.getZoom()<12));map.getContainer().classList.add('lowzoom');tick();setInterval(tick,1000);refresh();setInterval(refresh,10000);}
