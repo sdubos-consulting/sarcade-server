@@ -13,11 +13,12 @@ import secrets
 import time
 import uuid
 from pathlib import Path
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
+from geoalchemy2.shape import to_shape
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -173,6 +174,40 @@ def _stamp(*parts) -> str:
     return hashlib.sha1("|".join(str(p) for p in parts).encode()).hexdigest()[:16]
 
 
+_TRACES_CACHE: dict[tuple, tuple[float, list]] = {}
+
+
+def _traces(db: Session, event_id: str, opts: dict, shown: list[dict]) -> list[dict]:
+    """Traces the phone shows (« Traces » on: every operator shown;
+    otherwise the traces pinned one by one), last positions of the window,
+    at most 500 per device; read again at most once a minute."""
+    layers = opts["layers"]
+    ids = [p["device_id"] for p in shown] if layers.get("traces") else [i for i in opts.get("traces_ids", [])]
+    if not ids:
+        return []
+    window = opts.get("traces_window", 60)
+    key = (event_id, window, tuple(sorted(ids)))
+    hit = _TRACES_CACHE.get(key)
+    if hit and time.time() - hit[0] < 60:
+        return hit[1]
+    since = datetime.now(UTC) - timedelta(minutes=window)
+    ranked = select(PositionRow.id, func.row_number().over(
+        partition_by=PositionRow.device_id, order_by=PositionRow.time.desc()).label("rn")
+    ).where(PositionRow.event_id == event_id, PositionRow.device_id.in_(ids), PositionRow.time >= since).subquery()
+    rows = db.scalars(select(PositionRow).join(ranked, PositionRow.id == ranked.c.id)
+                      .where(ranked.c.rn <= tv.MAX_TRACE_POINTS).order_by(PositionRow.device_id, PositionRow.time)).all()
+    by: dict[str, dict] = {}
+    for r in rows:
+        t = by.setdefault(r.device_id, {"device_id": r.device_id, "aprs": r.source == "aprs", "points": []})
+        p = to_shape(r.point)  # geography column: no .lat / .lon on the row
+        t["points"].append([round(p.y, 6), round(p.x, 6)])
+    out = [t for t in by.values() if len(t["points"]) > 1]
+    if len(_TRACES_CACHE) > 200:
+        _TRACES_CACHE.clear()
+    _TRACES_CACHE[key] = (time.time(), out)
+    return out
+
+
 def _map_layers(db: Session, event_id: str, opts: dict, fr: str | None, rr: str | None) -> dict:
     """Drawings, bearings and reference sites, sent again only when they
     changed since the revisions the TV already has (``fr``, ``rr``)."""
@@ -236,6 +271,8 @@ def state(request: Request, fr: str | None = Query(None, max_length=32), rr: str
                          drawings=layers.get("drawings"), bearings=layers.get("bearings"),
                          references=layers.get("references"))
     snap["features_rev"], snap["references_rev"] = layers["features_rev"], layers["references_rev"]
+    # Traces chosen on the phone (1 Nov 2026).
+    snap["traces"] = _traces(db, event.id, tv.display_options(view), snap["positions"])
     snap["view"] = view
     # « Messages : afficher / masquer » of this screen, applied at once.
     snap["options"] = {**snap["options"], "messages": d.get("messages", snap["options"]["messages"])}
@@ -561,12 +598,16 @@ h2{font-size:16px;color:var(--h2);text-transform:uppercase;letter-spacing:1px;ma
 .m{padding:6px 0;border-bottom:1px solid var(--line2)}.u{color:var(--amber)}.i{color:var(--red);font-weight:700}
 #wx{display:flex;align-items:center;font-size:28px;font-weight:700;color:var(--strong);margin-left:4px;white-space:nowrap}
 .vig{display:inline-block;width:12px;height:12px;border-radius:50%;margin-left:2px}.vig.orange{background:#ff8c1a}.vig.red{background:#ff4d5e}
-.ex{background:#ffb020;color:#03152b;font-weight:800;border-radius:4px;padding:0 5px;font-size:12px}
-.zlab span{display:inline-block;white-space:nowrap;background:var(--panel);color:var(--fg);border-left:4px solid;padding:2px 7px;font-size:14px;border-radius:4px}
+.ex{background:#ff9f1c;color:#14201a;font-weight:900;border-radius:4px;padding:0 5px;font-size:13px;margin-right:6px}
+/* Probable zone label (maquette validée le 1er novembre 2026): outside the
+   circle, opaque dark background, white text, coloured frame. */
+.zlab span{display:inline-block;white-space:nowrap;background:#08111c;color:#fff;border:2px solid;padding:4px 10px;font-size:20px;font-weight:600;border-radius:8px}
+.zlab small{font-size:15px;font-weight:400;color:#b8c6d6}
 #mapBox{position:relative;min-width:0;height:100%}
 #legend{display:none;position:absolute;left:10px;bottom:10px;z-index:900;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:15px;max-width:40%}
 #legend div{display:flex;align-items:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.6}
 #legend i{display:inline-block;width:22px;height:4px;border-radius:2px;flex:none}#legend .zr{width:14px;height:14px;border-radius:50%;background:rgba(255,77,94,.15);border:2px solid}
+#legend .zx{border-style:dashed;background:rgba(255,159,28,.12)}#legend .gx{height:0;border-top:3px dashed #9aa3ad;background:none}
 #from{display:none;position:absolute;right:10px;bottom:10px;z-index:900;background:var(--panel);color:var(--muted);font-size:13px;border-radius:6px;padding:2px 8px}
 .txt span{white-space:nowrap;font-size:16px;font-weight:700;text-shadow:0 0 3px var(--shadow)}
 .lowzoom .rlab{display:none}
@@ -693,15 +734,25 @@ if(cone>0)L.polygon([[b.lat,b.lon],dest(b.lat,b.lon,(b.azimuth_deg-cone+360)%360
 L.circleMarker([b.lat,b.lon],Object.assign({},st,{radius:4,fillOpacity:op})).addTo(brgL);L.polyline([[b.lat,b.lon],end],st).addTo(brgL);}
 // Probable zone and crossings of each search, computed by the server.
 for(const z of zData){const col=col6(z.color);for(const c of z.crossings||[])L.circleMarker(c,{radius:4,color:col,weight:1,opacity:op,fillOpacity:op}).addTo(brgL);
-if(z.lat==null)continue;L.circle([z.lat,z.lon],{radius:Number(z.radius_m)||50,color:'#ff4d5e',weight:2,opacity:op,fillColor:'#ff4d5e',fillOpacity:.13*op,interactive:false}).addTo(brgL);
-L.marker([z.lat,z.lon],{interactive:false,icon:L.divIcon({className:'zlab',iconSize:null,iconAnchor:[-10,12],
-html:'<span style="border-color:'+col+';opacity:'+op+'">'+(z.exercise?'<span class="ex">EXERCICE</span> ':'')+esc(z.label)+'</span>'})}).addTo(brgL);}
+if(z.lat==null)continue;
+// Exercise: orange dashed contour; real search: red solid (1 Nov 2026).
+const zc=z.exercise?'#ff9f1c':'#ff4d5e',r=Number(z.radius_m)||50;
+L.circle([z.lat,z.lon],{radius:r,color:zc,weight:z.exercise?4:3,dashArray:z.exercise?'14 9':null,opacity:op,fillColor:zc,fillOpacity:.13*op,interactive:false}).addTo(brgL);
+// Label outside the circle, linked to its edge by a short line.
+const edge=dest(z.lat,z.lon,60,r),tip=dest(z.lat,z.lon,60,r*1.35+150);
+L.polyline([edge,tip],{color:zc,weight:2,opacity:op,interactive:false}).addTo(brgL);
+const parts=String(z.label||'').split(' · '),main=esc(parts.slice(0,2).join(' · ')),rest=parts.length>2?' <small>· '+esc(parts.slice(2).join(' · '))+'</small>':'';
+L.marker(tip,{interactive:false,icon:L.divIcon({className:'zlab',iconSize:null,iconAnchor:[0,18],
+html:'<span style="border-color:'+zc+';opacity:'+op+'">'+(z.exercise?'<span class="ex">EX</span>':'')+main+rest+'</span>'})}).addTo(brgL);}
 legend();}
 // Legend bottom left, always visible while bearings are shown.
 function legend(){const by={};for(const b of bData){const k=b.search||'';by[k]=by[k]||{color:col6(b.color),ex:false};by[k].ex=by[k].ex||b.exercise;}
 const keys=Object.keys(by).sort();const zone=zData.some(z=>z.lat!=null);
-$('legend').innerHTML=keys.map(k=>'<div><i style="background:'+by[k].color+'"></i>'+esc(k||'Sans signal')+(by[k].ex?' <span class="ex">EXERCICE</span>':'')+'</div>').join('')
-+(zone?'<div><i class="zr" style="border-color:#ff4d5e"></i>Zone probable</div>':'');$('legend').style.display=keys.length?'block':'none';}
+const real=zData.some(z=>z.lat!=null&&!z.exercise),exo=zData.some(z=>z.lat!=null&&z.exercise),out=zData.some(z=>(z.excluded||[]).length);
+$('legend').innerHTML=keys.map(k=>'<div><i style="background:'+by[k].color+'"></i>'+(by[k].ex?'<span class="ex">EX</span>':'')+esc(k||'Sans signal')+'</div>').join('')
++(real?'<div><i class="zr" style="border-color:#ff4d5e"></i>Zone probable (recherche réelle)</div>':'')
++(exo?'<div><i class="zr zx" style="border-color:#ff9f1c"></i>Zone d’exercice</div>':'')
++(out?'<div><i class="gx"></i>Relevé écarté</div>':'');$('legend').style.display=keys.length?'block':'none';}
 function drawRefs(o){refL.clearLayers();for(const r of rData){const hp=r.category==='HIGH_POINT',c=hp?'#7ddc5a':'#c77dff',op=nz(hp?o.high:o.relay,o.ref,1);
 L.circleMarker([r.lat,r.lon],{radius:5,color:c,weight:2,opacity:op,fillOpacity:op*0.6})
 .bindTooltip(esc(r.callsign||r.name),{permanent:true,direction:'right',className:'rlab'}).addTo(refL);}}
@@ -719,7 +770,15 @@ map.invalidateSize({animate:false});}
 let identId='';
 function identify(i){if(!i||i.id===identId)return;identId=i.id;$('ident').textContent=i.name;$('ident').style.display='flex';
 setTimeout(()=>{$('ident').style.display='none';},(Number(i.seconds)||5)*1000);}
+// Traces as on aprs.fi and in the application (1 Nov 2026): thick line,
+// a dot per position received (zoomed in), operators cyan, APRS amber.
+let trL,tData=[],trOp=1;
+function drawTraces(){if(!trL)return;trL.clearLayers();const dots=map&&map.getZoom()>=13;
+for(const t of tData){const col=t.aprs?'#ffb020':'#3dd6f5';
+L.polyline(t.points,{color:col,weight:5,opacity:.8*trOp,lineCap:'round',lineJoin:'round',interactive:false}).addTo(trL);
+if(dots)for(const p of t.points)L.circleMarker(p,{radius:3,color:'#ffffff',weight:1,fillColor:'#b71c1c',fillOpacity:trOp,opacity:trOp,interactive:false}).addTo(trL);}}
 function layers(s){const o=(s.options&&s.options.opacity)||{},key=JSON.stringify(o);
+const tk=JSON.stringify(s.traces||[]);if(tk!==layers.tk||nz(o.traces,1)!==trOp){layers.tk=tk;tData=s.traces||[];trOp=nz(o.traces,1);drawTraces();}
 if(s.drawings)dData=s.drawings;if(s.bearings){bData=s.bearings;zData=s.zones||[];}if(s.references)rData=s.references;
 if(s.drawings||s.bearings||key!==lastOp){drawFeatures(nz(o.draw,1));drawBearings(nz(o.brg,1));}
 if(s.references||key!==lastOp)drawRefs(o);lastOp=key;fr=s.features_rev||'';rr=s.references_rev||'';
@@ -751,7 +810,8 @@ $('msgs').innerHTML=s.messages.slice(-14).reverse().map(m=>'<div class="m '+(m.p
 const a=s.alert;$('alert').style.display=a?'block':'none';if(a)$('alert').textContent=a.sender_id+' : '+a.body;
 const sos=s.sos||[];$('sos').style.display=sos.length?'inline-block':'none';$('sos').title='Détresse en cours : '+sos.join(', ');}
 function start(){$('pair').style.display='none';$('app').style.display='grid';map=L.map('map',{zoomControl:false}).setView([46.6,2.4],6);
-map.on('zoomend moveend',declutter);drawL=L.layerGroup().addTo(map);brgL=L.layerGroup().addTo(map);refL=L.layerGroup().addTo(map);
+map.on('zoomend moveend',declutter);trL=L.layerGroup().addTo(map);drawL=L.layerGroup().addTo(map);brgL=L.layerGroup().addTo(map);refL=L.layerGroup().addTo(map);
+map.on('zoomend',function(){drawTraces();});
 map.on('zoomend',()=>map.getContainer().classList.toggle('lowzoom',map.getZoom()<12));map.getContainer().classList.add('lowzoom');tick();setInterval(tick,1000);refresh();setInterval(refresh,10000);}
 if(token)start();else pair();
 </script></body></html>"""
