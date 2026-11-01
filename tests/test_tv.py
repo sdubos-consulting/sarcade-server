@@ -442,7 +442,15 @@ def test_nearby_route_every_participant_and_messages_per_screen(sos_client, monk
     v = c.put("/api/v0.1/events/e1/displays/d1/view", json={"view": {**VIEW, "from": "PCO-Web", "messages": True}}).json()
     assert v["view"]["from"] == "PCO-Web"
     [d] = c.get("/api/v0.1/events/e1/displays").json()
-    assert d["messages"] is True and d["view_from"] == "PCO-Web"
+    # 1 Nov 2026: a view sent (or followed) keeps the screen's choice...
+    assert d["messages"] is False and d["view_from"] == "PCO-Web"
+    c.put("/api/v0.1/events/e1/displays/d1/view", json={"view": {**VIEW, "messages": True}, "live": True})
+    [d] = c.get("/api/v0.1/events/e1/displays").json()
+    assert d["messages"] is False
+    # ...unless « Colonne des messages » is ticked on purpose when sending.
+    c.put("/api/v0.1/events/e1/displays/d1/view", json={"view": VIEW, "messages": True})
+    [d] = c.get("/api/v0.1/events/e1/displays").json()
+    assert d["messages"] is True
     assert c.put("/api/v0.1/events/e1/displays/d1/view", json={"view": None}).json() == {"view": None}
 
 
