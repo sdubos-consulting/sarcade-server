@@ -121,6 +121,11 @@ for z in (12, 13):
           "live view followed")
 check(c.put(f"{E}/displays/{d2['id']}/view", json={"view": None}).json() == {"view": None}, "follow stopped")
 print("TV lot 11 verified")
+# Lot 18: « Vue de … » above the OpenStreetMap mention (control of the corner).
+page = c.get(f"{BASE}/tv").text
+check("L.control({position:'bottomright'})" in page and "#map #from{" in page, "TV page: « Vue de … » above the map mention")
+print("TV lot 18 (Vue de) verified")
+
 
 # Lot 17: SOS on the map of the TV, last known position of each open distress,
 # even when the operators layer is hidden on the screen.
@@ -147,8 +152,3 @@ check([m["device_id"] for m in c.get(f"{API}/tv/state", headers=TV).json()["dist
 say("TEL-SOS2", "Fin de détresse — TEL-SOS2", "urgent")
 c.put(f"{E}/displays/{d['id']}/view", json={"view": None})
 print("TV lot 17 (SOS) verified")
-
-# Lot 18: « Vue de … » above the OpenStreetMap mention (control of the corner).
-page = c.get(f"{BASE}/tv").text
-check("L.control({position:'bottomright'})" in page and "#map #from{" in page, "TV page: « Vue de … » above the map mention")
-print("TV lot 18 (Vue de) verified")
