@@ -655,7 +655,6 @@ h2{font-size:16px;color:var(--h2);text-transform:uppercase;letter-spacing:1px;ma
 .ac svg{display:block}.acl{position:absolute;white-space:nowrap;font-size:13px;font-weight:700;background:rgba(8,17,28,.85);padding:1px 6px;border-radius:4px}
 #acLeg{display:none;position:absolute;left:10px;top:10px;z-index:900;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:5px 10px;font-size:14px}
 #acLeg div{display:flex;align-items:center;white-space:nowrap;line-height:1.55}#acLeg .h{font-weight:700;color:var(--muted)}#acLeg i{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:7px;flex:none}
-#diag{display:none;position:absolute;right:10px;top:10px;z-index:950;background:rgba(3,21,43,.9);color:#fff;border:1px solid #1e2c38;border-radius:8px;padding:6px 10px;font:14px/1.45 ui-monospace,Consolas,monospace;white-space:pre;max-height:80%;overflow:hidden}
 #from{display:none;position:absolute;right:10px;bottom:10px;z-index:900;background:var(--panel);color:var(--muted);font-size:13px;border-radius:6px;padding:2px 8px}
 .txt span{white-space:nowrap;font-size:16px;font-weight:700;text-shadow:0 0 3px var(--shadow)}
 .lowzoom .rlab{display:none}
@@ -682,6 +681,7 @@ font-weight:800;font-size:18px;line-height:1.25;border-radius:6px;padding:2px 9p
 #ident{display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:3000;align-items:center;justify-content:center;text-align:center;padding:4vw;box-sizing:border-box;
 background:rgba(3,21,43,.92);color:#fff;font-size:14vw;font-size:min(14vw,22vh);font-weight:800;line-height:1.1;overflow-wrap:anywhere}
 #alert{display:none;position:fixed;left:0;right:0;top:0;padding:18px;background:#ff4d5e;color:#fff;font-size:30px;font-weight:700;text-align:center;z-index:2000}
+#diag{display:none;position:absolute;right:10px;top:10px;z-index:950;background:rgba(3,21,43,.9);color:#fff;border:1px solid #1e2c38;border-radius:8px;padding:6px 10px;font:14px/1.45 ui-monospace,Consolas,monospace;white-space:pre;max-height:80%;overflow:hidden}
 </style></head><body>
 <div id="pair"><div class="left"><div class="logo"><img src="/tv/logo.png" alt="SARCADE"></div>
 <div class="lead">Afficher SARCADE sur cet écran</div><div id="code">······</div>
