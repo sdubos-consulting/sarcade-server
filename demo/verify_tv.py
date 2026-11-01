@@ -121,3 +121,29 @@ for z in (12, 13):
           "live view followed")
 check(c.put(f"{E}/displays/{d2['id']}/view", json={"view": None}).json() == {"view": None}, "follow stopped")
 print("TV lot 11 verified")
+
+# Lot 17: SOS on the map of the TV, last known position of each open distress,
+# even when the operators layer is hidden on the screen.
+def say(sender, body, priority):
+    mid = str(uuid.uuid4())
+    p = {"id": mid, "event_id": event, "sender_id": sender, "recipient_ids": [], "priority": priority,
+         "body": body, "created_at": NOW}
+    r = c.post(f"{API}/sync", json=[{"operation_id": str(uuid.uuid4()), "event_id": event, "object_id": mid,
+                                      "object_type": "message", "action": "create", "client_time": NOW, "payload": p}])
+    check(r.status_code == 200 and r.json()[0]["status"] == "accepted", f"message « {body[:20]} » accepted")
+
+
+c.put(f"{E}/displays/{d['id']}/view", json={"view": {"lat": 48.8, "lon": 2.1, "zoom": 13, "layers": {"operators": False}}})
+say("TEL-TR", "🆘 DÉTRESSE — TEL-TR — position 48.80300, 2.10000", "immediate")
+say("TEL-SOS2", "🆘 DÉTRESSE — TEL-SOS2 — position inconnue", "immediate")
+s = c.get(f"{API}/tv/state", headers=TV).json()
+marks = {m["device_id"]: m for m in s["distress"]}
+check(s["positions"] == [] or all(p["source"] == "aprs" for p in s["positions"]), "operators layer hidden on the screen")
+check(marks["TEL-TR"]["known"] and abs(marks["TEL-TR"]["lat"] - 48.803) < 1e-6 and marks["TEL-TR"]["stale"] is False,
+      "SOS with its last known position, despite the hidden layer")
+check(marks["TEL-SOS2"]["known"] is False, "SOS without position: « position inconnue »")
+say("TEL-TR", "Fin de détresse — TEL-TR", "urgent")
+check([m["device_id"] for m in c.get(f"{API}/tv/state", headers=TV).json()["distress"]] == ["TEL-SOS2"], "end of distress removes the halo")
+say("TEL-SOS2", "Fin de détresse — TEL-SOS2", "urgent")
+c.put(f"{E}/displays/{d['id']}/view", json={"view": None})
+print("TV lot 17 (SOS) verified")
