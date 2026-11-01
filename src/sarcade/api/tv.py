@@ -639,7 +639,9 @@ h2{font-size:16px;color:var(--h2);text-transform:uppercase;letter-spacing:1px;ma
 #legend i{display:inline-block;width:22px;height:4px;border-radius:2px;flex:none}#legend .zr{width:14px;height:14px;border-radius:50%;background:rgba(255,77,94,.15);border:2px solid}
 #legend .zx{border-style:dashed;background:rgba(255,159,28,.12)}#legend .gx{height:0;border-top:3px dashed #9aa3ad;background:none}
 #acAlert{display:none;position:absolute;left:50%;top:10px;-webkit-transform:translateX(-50%);transform:translateX(-50%);z-index:950;background:#ff4d5e;color:#fff;font-weight:800;font-size:18px;border-radius:8px;padding:6px 14px;white-space:nowrap}
-.ac{position:relative}.ac svg{display:block}.acl{position:absolute;left:30px;top:5px;white-space:nowrap;font-size:13px;font-weight:700;background:rgba(8,17,28,.85);padding:1px 6px;border-radius:4px}
+.ac{position:relative}.ac svg{display:block}.acl{position:absolute;white-space:nowrap;font-size:13px;font-weight:700;background:rgba(8,17,28,.85);padding:1px 6px;border-radius:4px}
+#acLeg{display:none;position:absolute;left:10px;top:10px;z-index:900;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:5px 10px;font-size:14px}
+#acLeg div{display:flex;align-items:center;white-space:nowrap;line-height:1.55}#acLeg .h{font-weight:700;color:var(--muted)}#acLeg i{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:7px;flex:none}
 #from{display:none;position:absolute;right:10px;bottom:10px;z-index:900;background:var(--panel);color:var(--muted);font-size:13px;border-radius:6px;padding:2px 8px}
 .txt span{white-space:nowrap;font-size:16px;font-weight:700;text-shadow:0 0 3px var(--shadow)}
 .lowzoom .rlab{display:none}
@@ -809,23 +811,63 @@ function drawTraces(){if(!trL)return;trL.clearLayers();const dots=map&&map.getZo
 for(const t of tData){const col=t.aprs?'#ffb020':'#3dd6f5';
 L.polyline(t.points,{color:col,weight:5,opacity:.8*trOp,lineCap:'round',lineJoin:'round',interactive:false}).addTo(trL);
 if(dots)for(const p of t.points)L.circleMarker(p,{radius:3,color:'#ffffff',weight:1,fillColor:'#b71c1c',fillOpacity:trOp,opacity:trOp,interactive:false}).addTo(trL);}}
-// Aircraft (ADS-B, module ADRASEC, 1 Nov 2026): icon turned to the track,
-// colour by altitude (low = more visible), label only for an emergency or
-// when the application shows the callsigns; red banner for 7700/7600/7500.
-let acL,aData=[],acLabels=false;
-const AC_PATH='M12 2l2 7 8 4v2l-8-2-1 6 3 2v1l-4-1-4 1v-1l3-2-1-6-8 2v-2l8-4z';
-function acColor(a){if(a.emergency)return '#ff4d5e';const f=a.alt_ft;if(f==null)return '#8aa4bf';return f<=3000?'#ffb020':(f<=10000?'#3dd6f5':'#8aa4bf');}
-function drawAircraft(){if(!acL)return;acL.clearLayers();const urgent=[];
-for(const a of aData){const col=acColor(a),deg=a.track_deg==null?0:a.track_deg;
-if(a.trail&&a.trail.length>1)L.polyline(a.trail,{color:col,weight:2,opacity:.55,interactive:false}).addTo(acL);
-const lab=(a.emergency||acLabels)?'<span class="acl" style="color:'+col+'">'+esc(a.callsign||String(a.icao24).toUpperCase())+(a.alt_ft!=null?' · '+a.alt_ft+' ft':'')+'</span>':'';
-L.marker([a.lat,a.lon],{interactive:false,icon:L.divIcon({className:'ac',iconSize:null,iconAnchor:[14,14],
-html:'<svg width="28" height="28" viewBox="0 0 24 24" style="-webkit-transform:rotate('+deg+'deg);transform:rotate('+deg+'deg)"><path d="'+AC_PATH+'" fill="'+col+'" stroke="#fff" stroke-width=".8"/></svg>'+lab})}).addTo(acL);
+// Aircraft (ADS-B, module ADRASEC, 1 Nov 2026): icon by OpenSky category
+// (original SARCADE drawings, the same set as the application; helicopter
+// not turned), colour by altitude band with the thresholds and bands of the
+// application, label only for an emergency or when the application shows
+// the callsigns; red banner for 7700/7600/7500. Estimated position from the
+// OpenSky time of the position (60 s at most, then grey « position
+// ancienne »), centre of the icon = position. No trace, except the routes
+// of the aircraft followed in the application that sent the view.
+let acL,aData=[],acOpt={},acTracks={},acOn=false,acOff=0,acM={},acTick=0;
+const AC_SHAPES={"plane":{"d":"M12 2L14 9L22 13L22 15L14 13L13 19L16 21L16 22L12 21L8 22L8 21L11 19L10 13L2 15L2 13L10 9Z","c":[]},"light":{"d":"M11 3L13 3L13 8L22 8L22 11L13 11L12.5 18L16 18.5L16 20.5L8 20.5L8 18.5L11.5 18L11 11L2 11L2 8L11 8Z","c":[]},"airliner":{"d":"M12 1L13.3 3L13.5 9L22 14L22 16L13.5 13.5L13 19L16 21L16 22.5L12 21.5L8 22.5L8 21L11 19L10.5 13.5L2 16L2 14L10.5 9L10.7 3ZM16.2 11.5L17.6 12.2L17.6 14.6L16.2 14.6ZM7.8 11.5L6.4 12.2L6.4 14.6L7.8 14.6Z","c":[]},"glider":{"d":"M11.4 4L12.6 4L12.6 9L23 9.6L23 10.8L12.6 11L12.3 19L15.5 19.3L15.5 20.5L8.5 20.5L8.5 19.3L11.7 19L11.4 11L1 10.8L1 9.6L11.4 9Z","c":[]},"ulm":{"d":"M12 3L22 15L12 12.5L2 15Z","c":[[12,16,2.5]]},"heli":{"d":"M3.5 4.9L4.9 3.5L20.5 19.1L19.1 20.5ZM19.1 3.5L20.5 4.9L4.9 20.5L3.5 19.1ZM11.3 15L12.7 15L12.6 21L11.4 21ZM9.5 20.5L14.5 20.5L14.5 22L9.5 22Z","c":[[12,12,4.2]]},"balloon":{"d":"M7 14L8.2 13.6L10.8 19L10.2 19ZM17 14L15.8 13.6L13.2 19L13.8 19ZM10 19L14 19L14 22.5L10 22.5Z","c":[[12,9,7]]},"drone":{"d":"M5.3 6.7L6.7 5.3L18.7 17.3L17.3 18.7ZM17.3 5.3L18.7 6.7L6.7 18.7L5.3 17.3ZM9.5 9.5L14.5 9.5L14.5 14.5L9.5 14.5ZM12 4.5L14 8.5L10 8.5Z","c":[[6,6,3],[18,6,3],[6,18,3],[18,18,3]]},"parachute":{"d":"M3 10L4 6.5L7 4L12 3L17 4L20 6.5L21 10L17 8.8L12 8.3L7 8.8ZM3.2 10L4.2 10L11.6 17L11 17.6ZM20.8 10L19.8 10L12.4 17L13 17.6ZM11 19.5L13 19.5L13 23L11 23Z","c":[[12,17.8,1.9]]}};
+const AC_KIND={2:'light',3:'light',4:'airliner',5:'airliner',6:'airliner',8:'heli',9:'glider',10:'balloon',11:'parachute',12:'ulm',14:'drone'};
+const AC_COL={low:'#F57C00',mid:'#1565C0',high:'#607D8B',ground:'#78909C',urgent:'#D32F2F',follow:'#8E24AA'};
+const AC_EST_MAX=60;
+function acKind(a){return AC_KIND[a.category]||(a.rotorcraft?'heli':'plane');}
+function acBand(a){const f=a.alt_ft;if(a.on_ground||f==null)return 'ground';
+const lo=nz(acOpt.aircraft_low_ft,3000),hi=nz(acOpt.aircraft_high_ft,10000);return f<=lo?'low':(f<=hi?'mid':'high');}
+function acFollowed(id){return (acOpt.aircraft_followed||[]).indexOf(id)>=0;}
+function acRef(a){const t=nz(a.position_time,a.last_contact);return typeof t==='number'?t:null;}
+function acAge(a){const t=acRef(a);return t==null?0:(Date.now()+acOff)/1000-t;}
+function acStale(a){return !a.emergency&&acRef(a)!=null&&acAge(a)>AC_EST_MAX;}
+function acPos(a){const age=Math.max(0,Math.min(acAge(a),AC_EST_MAX));
+if(a.on_ground||!a.speed_kt||a.track_deg==null||!age)return [a.lat,a.lon];
+const m=a.speed_kt*0.514444*age,t=a.track_deg*Math.PI/180;
+return [a.lat+m*Math.cos(t)/111320,a.lon+m*Math.sin(t)/(111320*Math.cos(a.lat*Math.PI/180))];}
+function acColor(a){return a.emergency?AC_COL.urgent:AC_COL[acBand(a)];}
+function acFt(v){let t=String(v),o='';while(t.length>3){o='\\u202f'+t.slice(-3)+o;t=t.slice(0,-3);}return t+o+' ft';}
+function acIcon(a,stale){const k=acKind(a),sh=AC_SHAPES[k],px=k==='airliner'?34:28,half=px/2,col=acColor(a);
+const deg=(k==='heli'||a.track_deg==null)?0:a.track_deg,ring=a.emergency?AC_COL.urgent:(acFollowed(a.icao24)?AC_COL.follow:'');
+let h='<svg width="'+px+'" height="'+px+'" viewBox="0 0 24 24" style="-webkit-transform:rotate('+deg+'deg);transform:rotate('+deg+'deg)'+(stale?';opacity:.5':'')+'">';
+if(ring)h+='<circle cx="12" cy="12" r="11.4" fill="'+ring+'" fill-opacity=".25" stroke="'+ring+'" stroke-width="1.2"/>';
+const fill=stale?AC_COL.ground:col;
+h+='<path d="'+sh.d+'" fill="'+fill+'" stroke="#fff" stroke-width=".8" stroke-linejoin="round"/>';
+for(const c of sh.c)h+='<circle cx="'+c[0]+'" cy="'+c[1]+'" r="'+c[2]+'" fill="'+fill+'" stroke="#fff" stroke-width=".8"/>';
+h+='</svg>';
+if(a.emergency||acOpt.aircraft_labels)h+='<span class="acl" style="color:'+col+';left:'+(px+2)+'px;top:'+(half-9)+'px">'+esc(a.callsign||String(a.icao24).toUpperCase())+(a.alt_ft!=null?' · '+acFt(a.alt_ft):'')+'</span>';
+return L.divIcon({className:'ac',iconSize:null,iconAnchor:[half,half],html:h});}
+function drawAircraft(){if(!acL)return;acL.clearLayers();acM={};const urgent=[];
+for(const id in acTracks){const t=acTracks[id];if(t&&t.length>1)L.polyline(t,{color:AC_COL.follow,weight:4,opacity:.85,interactive:false}).addTo(acL);}
+for(const a of aData){const st=acStale(a);acM[a.icao24]={a:a,st:st,m:L.marker(acPos(a),{interactive:false,icon:acIcon(a,st)}).addTo(acL)};
 if(a.emergency)urgent.push((a.callsign||String(a.icao24).toUpperCase())+' · '+(EMERG[a.emergency]||a.squawk));}
-const b=document.getElementById('acAlert');b.style.display=urgent.length?'block':'none';b.textContent=urgent.length?'ADS-B : '+urgent.join(' — '):'';}
+const b=document.getElementById('acAlert');b.style.display=urgent.length?'block':'none';b.textContent=urgent.length?'ADS-B : '+urgent.join(' — '):'';
+acLegend();if(!acTick)acTick=setInterval(acMove,2000);}
+// Every 2 s: the estimated positions move on, an old position turns grey.
+function acMove(){for(const id in acM){const o=acM[id],st=acStale(o.a);o.m.setLatLng(acPos(o.a));if(st!==o.st){o.st=st;o.m.setIcon(acIcon(o.a,st));}}}
+// Small legend of the colours while the layer is shown (bands of the view).
+function acLegend(){let b=document.getElementById('acLeg');if(!b){b=document.createElement('div');b.id='acLeg';$('mapBox').appendChild(b);}
+if(!acOn){b.style.display='none';return;}
+const lo=nz(acOpt.aircraft_low_ft,3000),hi=nz(acOpt.aircraft_high_ft,10000),bd=acOpt.aircraft_bands||{low:true,mid:true,high:false};
+const row=function(c,t){return '<div><i style="background:'+c+'"></i>'+t+'</div>';};
+b.innerHTML='<div class="h">Aéronefs</div>'+(bd.low?row(AC_COL.low,'Bas · 0 – '+acFt(lo)):'')+(bd.mid?row(AC_COL.mid,'Moyen · '+acFt(lo)+' – '+acFt(hi)):'')
++(bd.high?row(AC_COL.high,'Haut · au-delà de '+acFt(hi)):'')+(acOpt.aircraft_ground||bd.low?row(AC_COL.ground,'Au sol ou altitude inconnue'):'')
++row(AC_COL.urgent,'Urgence 7700 / 7600 / 7500')+(Object.keys(acTracks).length?row(AC_COL.follow,'Avion suivi'):'');b.style.display='block';}
 const EMERG={emergency:'urgence (7700)',radio_failure:'panne radio (7600)',unlawful_interference:'intervention illicite (7500)'};
 function layers(s){const o=(s.options&&s.options.opacity)||{},key=JSON.stringify(o);
-const ak=JSON.stringify(s.aircraft||[])+(s.options&&s.options.aircraft_labels);if(ak!==layers.ak){layers.ak=ak;aData=s.aircraft||[];acLabels=!!(s.options&&s.options.aircraft_labels);drawAircraft();}
+if(typeof s.aircraft_now==='number')acOff=s.aircraft_now*1000-Date.now();
+const so=s.options||{},ak=JSON.stringify([s.aircraft||null,s.aircraft_tracks||{},so.aircraft_low_ft,so.aircraft_high_ft,so.aircraft_bands,so.aircraft_ground,so.aircraft_labels,so.aircraft_followed]);
+if(ak!==layers.ak){layers.ak=ak;aData=s.aircraft||[];acTracks=s.aircraft_tracks||{};acOpt=so;acOn=Array.isArray(s.aircraft);drawAircraft();}
 const tk=JSON.stringify(s.traces||[]);if(tk!==layers.tk||nz(o.traces,1)!==trOp){layers.tk=tk;tData=s.traces||[];trOp=nz(o.traces,1);drawTraces();}
 if(s.drawings)dData=s.drawings;if(s.bearings){bData=s.bearings;zData=s.zones||[];}if(s.references)rData=s.references;
 if(s.drawings||s.bearings||key!==lastOp){drawFeatures(nz(o.draw,1));drawBearings(nz(o.brg,1));}
