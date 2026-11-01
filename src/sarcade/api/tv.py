@@ -250,6 +250,11 @@ def _map_layers(db: Session, event_id: str, opts: dict, fr: str | None, rr: str 
     return out
 
 
+# What the TV gets of each position; ``aprs_symbol`` (table + code, lot 19):
+# the APRS gateways in a diamond.
+STATE_POSITION_KEYS = ("device_id", "lat", "lon", "time", "source", "callsign", "aprs_symbol")
+
+
 @router.get("/api/v0.1/tv/state")
 def state(request: Request, fr: str | None = Query(None, max_length=32), rr: str | None = Query(None, max_length=32),
           db: Session = Depends(get_db)):
@@ -264,8 +269,7 @@ def state(request: Request, fr: str | None = Query(None, max_length=32), rr: str
         partition_by=PositionRow.device_id, order_by=PositionRow.time.desc()).label("rn")
     ).where(PositionRow.event_id == event.id).subquery()
     rows = db.scalars(select(PositionRow).join(ranked, PositionRow.id == ranked.c.id).where(ranked.c.rn == 1)).all()
-    positions = [{k: v for k, v in position_dict(r).items() if k in ("device_id", "lat", "lon", "time", "source", "callsign")}
-                 for r in rows]
+    positions = [{k: v for k, v in position_dict(r).items() if k in STATE_POSITION_KEYS} for r in rows]
     msgs = db.scalars(select(MessageRow).where(MessageRow.event_id == event.id)
                       .order_by(MessageRow.created_at.desc()).limit(60)).all()
     snap = tv.snapshot({"id": event.id, "name": event.name}, positions, [_msg(m) for m in reversed(msgs)])
@@ -662,6 +666,7 @@ h2{font-size:16px;color:var(--h2);text-transform:uppercase;letter-spacing:1px;ma
 /* « Vue de … » (lot 18): a Leaflet control of the bottom right corner, so
    always stacked above the OpenStreetMap mention, never under it. */
 #map #from{display:none;margin:0 10px 6px 0;background:#08111c;color:#fff;font-size:15px;font-weight:600;line-height:1.4;border-radius:6px;padding:3px 10px}
+.aprd svg{display:block}
 .txt span{white-space:nowrap;font-size:16px;font-weight:700;text-shadow:0 0 3px var(--shadow)}
 .lowzoom .rlab{display:none}
 #sos{display:none;background:#ff4d5e;color:#fff;font-weight:800;font-size:16px;border-radius:999px;padding:3px 10px;animation:blink 1.2s steps(2,start) infinite}
@@ -726,6 +731,15 @@ const ms=Object.values(markers).sort((a,b)=>(a._aprs?1:0)-(b._aprs?1:0));
 for(const m of ms){const pt=map.latLngToContainerPoint(m.getLatLng());
 const clash=kept.some(q=>Math.abs(q.x-pt.x)<110&&Math.abs(q.y-pt.y)<22);
 if(clash)m.closeTooltip();else{m.openTooltip();kept.push(pt);}}}
+// APRS gateways in a diamond (lot 19, decision of 1 Nov 2026, 22 h 13):
+// symbol « ?& » with an overlay letter or digit, or a table « / » « \\ »;
+// red for LoRa (L&), black for the others (I&, R&, &…), white overlay letter
+// in the centre, drawn by SARCADE (no image taken). Other stations: round.
+function gateway(sym){sym=String(sym||'');return sym.length===2&&sym.charAt(1)==='&'&&/[A-Z0-9\\/\\\\]/.test(sym.charAt(0))?sym.charAt(0):null;}
+function gwIcon(c){const ch=/[A-Z0-9]/.test(c)?c:'';
+return L.divIcon({className:'aprd',iconSize:[24,24],iconAnchor:[12,12],tooltipAnchor:[10,0],
+html:'<svg width="24" height="24" viewBox="0 0 24 24"><path d="M12 1L23 12L12 23L1 12Z" fill="'+(c==='L'?'#d50000':'#111')+'" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/>'
++(ch?'<text x="12" y="16" text-anchor="middle" font-size="11" font-weight="700" font-family="Arial,Helvetica,sans-serif" fill="#fff">'+ch+'</text>':'')+'</svg>'});}
 function hm(t){const d=new Date(t);return d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});}
 // Default name of this screen, from its browser (« TV Samsung · 1920×1080 »):
 // brand or system announced in the user agent, and the resolution.
@@ -932,7 +946,7 @@ if(s.drawings)dData=s.drawings;if(s.bearings){bData=s.bearings;zData=s.zones||[]
 if(s.drawings||s.bearings||key!==lastOp){drawFeatures(nz(o.draw,1));drawBearings(nz(o.brg,1));}
 if(s.references||key!==lastOp)drawRefs(o);lastOp=key;fr=s.features_rev||'';rr=s.references_rev||'';
 // One opacity per layer: operators and APRS apart.
-for(const m of Object.values(markers)){const op=nz(m._aprs?o.aprs:o.ops,o.ops,1);m.setStyle({opacity:op,fillOpacity:.9*op});m.bringToFront();}
+for(const m of Object.values(markers)){const op=nz(m._aprs?o.aprs:o.ops,o.ops,1);if(m.setStyle){m.setStyle({opacity:op,fillOpacity:.9*op});m.bringToFront();}else m.setOpacity(op);}
 look(s);}
 // SOS on the map (lot 17): one halo per open distress, at the last known
 // position sent by the server whatever the layers; the view of the TV never
@@ -970,7 +984,9 @@ const active=s.positions.filter(p=>p.source!=='aprs'&&now-new Date(p.time)<10*60
 $('nOps').textContent=s.positions.filter(p=>p.source!=='aprs'&&now-new Date(p.time)<10*60000).length;
 $('nAprs').textContent=s.positions.filter(p=>p.source==='aprs').length;
 for(const p of s.positions){const ll=[p.lat,p.lon];pts.push(ll);const k=p.device_id;const aprs=p.source==='aprs';
-if(!markers[k]){markers[k]=L.circleMarker(ll,{radius:aprs?6:8,color:aprs?'#ffb020':'#3dd6f5',fillOpacity:.9}).bindTooltip(esc(label(p)),{permanent:true,direction:'right'}).addTo(map);markers[k]._aprs=aprs;}else markers[k].setLatLng(ll);}
+const gw=aprs?gateway(p.aprs_symbol):null;if(markers[k]&&markers[k]._gw!==gw){map.removeLayer(markers[k]);delete markers[k];}
+if(!markers[k]){markers[k]=(gw!==null?L.marker(ll,{icon:gwIcon(gw),keyboard:false}):L.circleMarker(ll,{radius:aprs?6:8,color:aprs?'#ffb020':'#3dd6f5',fillOpacity:.9}))
+.bindTooltip(esc(label(p)),{permanent:true,direction:'right'}).addTo(map);markers[k]._aprs=aprs;markers[k]._gw=gw;}else markers[k].setLatLng(ll);}
 // Stations no longer shown (hidden layer) leave the map.
 const keep=new Set(s.positions.map(p=>p.device_id));for(const k of Object.keys(markers))if(!keep.has(k)){map.removeLayer(markers[k]);delete markers[k];}
 layers(s);weather(s.weather);identify(s.identify);
