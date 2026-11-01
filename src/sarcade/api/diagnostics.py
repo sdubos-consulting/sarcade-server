@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from sarcade import diagnostics as diag
 from sarcade.access.verify import verifier
-from sarcade.aprs.service import runtime as aprs_runtime
+from sarcade.modules import hooks as module_hooks
 from sarcade.db.models import ServerUpdateRow, WeatherCacheRow
 from sarcade.realtime.manager import manager
 from sarcade.updates import service as updates
@@ -54,7 +54,7 @@ def components(db: Session, now: datetime) -> tuple[dict[str, str], dict]:
                         "sent": wakeup.stats.sent, "failed": wakeup.stats.failed,
                         "last_error": wakeup.stats.last_error}
     wake = "green" if android and not wakeup.stats.last_error else ("orange" if android or wakeup.stats.sent else "red")
-    links = [_link(aprs_runtime.aprs_is), _link(aprs_runtime.radio)]
+    links = [_link(link) for link in module_hooks.links()]
     aprs = "off" if all(v == "off" for v in links) else ("green" if "green" in links else "red")
     if aprs == "green" and "red" in links:
         aprs = "orange"

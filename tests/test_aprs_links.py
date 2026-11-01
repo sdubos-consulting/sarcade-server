@@ -3,7 +3,7 @@ import asyncio
 
 import pytest
 
-from sarcade.aprs import kiss, links, service
+from sarcade.modules.adrasec.aprs import kiss, links, service
 
 
 @pytest.fixture(autouse=True)

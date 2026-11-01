@@ -100,7 +100,7 @@ def apply_patch(stored: dict | None, patch: dict) -> dict:
                 raise InvalidSettings("invalid_value:basemap")
         elif key == "aprs_tx_callsign":
             if value is not None:
-                from sarcade.aprs.callsigns import InvalidCallsign, normalize
+                from sarcade.domain.callsigns import InvalidCallsign, normalize
                 try:
                     value = normalize(value)
                 except (InvalidCallsign, TypeError) as exc:
@@ -132,7 +132,7 @@ def apply_patch(stored: dict | None, patch: dict) -> dict:
 
 def _clean_list(key: str, value) -> list[str]:
     if key == "aprs_callsigns":
-        from sarcade.aprs.callsigns import InvalidCallsign, normalize_list
+        from sarcade.domain.callsigns import InvalidCallsign, normalize_list
         try:
             return normalize_list(value)
         except InvalidCallsign as exc:

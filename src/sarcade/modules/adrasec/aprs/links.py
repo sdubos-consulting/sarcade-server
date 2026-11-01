@@ -21,7 +21,7 @@ import os
 from sarcade.db.session import SessionLocal
 from sarcade.realtime.manager import manager
 
-from . import callsigns as calls
+from sarcade.domain import callsigns as calls
 from . import kiss
 from .service import all_followed_callsigns, ingest, runtime, server_callsign
 

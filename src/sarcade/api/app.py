@@ -2,7 +2,6 @@ import asyncio
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 import hashlib
-import json
 import logging
 import os
 from pathlib import Path
@@ -13,15 +12,14 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse, JSONResponse
 from geoalchemy2.elements import WKTElement
 from pydantic import ValidationError
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.exc import DataError, IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from sarcade.db.models import AckRow, EventRow, LogbookRow, MapFeatureRow, MessageRow, POIRow, PositionRow, ReferenceSiteRow, SharedFileRow, SyncOperationRow, TeamRow
+from sarcade.db.models import AckRow, EventRow, LogbookRow, MapFeatureRow, MessageRow, POIRow, PositionRow, SharedFileRow, SyncOperationRow, TeamRow
 from sarcade.realtime.manager import manager
-from .schemas import EventCreate, EventOut, POICreate, POIOut, PositionCreate, PositionOut, ReferenceSiteOut, SyncOperationIn, SyncResultOut, TeamCreate, TeamOut
-from .serializers import poi_dict, position_dict, reference_site_dict
-from sarcade.reference.umap import REFERENCE_LAYERS, parse_umap_reference_sites
+from .schemas import EventCreate, EventOut, POICreate, POIOut, PositionCreate, PositionOut, SyncOperationIn, SyncResultOut, TeamCreate, TeamOut
+from .serializers import poi_dict, position_dict
 from sarcade.sync.service import VALID_TYPES, record_operation
 from sarcade.features import service as features
 from sarcade.messages import attachments as msg_attachments
@@ -32,7 +30,6 @@ from sarcade.messages import reply as msg_reply
 from .deps import get_db
 from . import operations as event_ops
 from . import groups as groups_api
-from . import aprs as aprs_api
 from . import weather as weather_api
 from . import routes as routes_api
 from . import navigation as navigation_api
@@ -43,8 +40,8 @@ from sarcade import licensing
 from sarcade import modules
 from sarcade.updates import service as updates_service
 from sarcade.weather import service as weather_service
-from sarcade.aprs import links as aprs_links
-from sarcade.aprs import service as aprs_service
+from sarcade.modules import hooks as module_hooks
+from sarcade.modules import loader as module_loader
 from sarcade.groups import service as groups
 from . import access as access_api
 from sarcade.access import logbook as access_logbook
@@ -61,7 +58,6 @@ from sarcade import roles as user_roles
 from . import tv as tv_api
 from sarcade.wakeup import service as wakeup_service
 from sarcade.events import contacts as event_contacts
-from . import signals as signals_api
 from . import diagnostics as diagnostics_api
 from sarcade import diagnostics
 
@@ -74,7 +70,7 @@ _wake_tasks: set = set()
 
 @asynccontextmanager
 async def lifespan(_app):
-    aprs_links.start(_background_tasks)
+    module_hooks.start(_background_tasks)
     weather_service.start(_background_tasks)
     navigation_api.start(_background_tasks)
     updates_service.start(_background_tasks)
@@ -114,7 +110,6 @@ async def tv_host_only_display(request, call_next):
 
 app.include_router(event_ops.router)
 app.include_router(groups_api.router)
-app.include_router(aprs_api.router)
 app.include_router(weather_api.router)
 app.include_router(routes_api.router)
 app.include_router(navigation_api.router)
@@ -132,7 +127,9 @@ app.include_router(personal_files_api.router)
 app.include_router(file_folders_api.router)
 app.include_router(roles_api.router)
 app.include_router(tv_api.router)
-app.include_router(signals_api.router)
+module_loader.load()
+for _router in module_hooks.routers:
+    app.include_router(_router)
 app.include_router(diagnostics_api.router)
 
 
@@ -195,8 +192,8 @@ async def ingest_position(payload: PositionCreate, db: Session = Depends(get_db)
     device = event_ops.touch_device(db, payload.event_id, payload.device_id, datetime.now(UTC),
                                     position_time=payload.time, battery_pct=payload.battery_pct)
     db.commit(); db.refresh(row)
-    aprs_service.queue_transmission(db.get(EventRow, payload.event_id).settings, device,
-                                    payload.lat, payload.lon, datetime.now(UTC))
+    module_hooks.position_received(db.get(EventRow, payload.event_id).settings, device,
+                                   payload.lat, payload.lon, datetime.now(UTC))
     data = position_dict(row)
     alerts = _geofence(db, payload.event_id, {"device_id": payload.device_id, "lat": payload.lat, "lon": payload.lon},
                        datetime.now(UTC))
@@ -262,145 +259,6 @@ def list_pois(event_id: str, db: Session = Depends(get_db)):
     rows = db.scalars(select(POIRow).where(POIRow.event_id == event_id, POIRow.deleted_at.is_(None)).order_by(POIRow.created_at)).all()
     return [poi_dict(row) for row in rows]
 
-
-REFERENCE_IMPORT_MAX_BYTES = int(os.getenv("SARCADE_REFERENCE_IMPORT_MAX_BYTES", str(10 * 1024 * 1024)))
-
-
-def _set_reference_site(row: ReferenceSiteRow, site: dict):
-    row.category = site["category"]
-    row.subtype = site.get("subtype")
-    row.name = site["name"]
-    row.callsign = site.get("callsign")
-    row.point = WKTElement(f'POINT({site["lon"]} {site["lat"]})', srid=4326)
-    row.alt_m = site.get("alt_m")
-    row.access = site.get("access")
-    row.clearance = site.get("clearance")
-    row.mode = site.get("mode")
-    row.rx_mhz = site.get("rx_mhz")
-    row.tx_mhz = site.get("tx_mhz")
-    row.ctcss_rx = site.get("ctcss_rx")
-    row.ctcss_tx = site.get("ctcss_tx")
-    row.offset = site.get("offset")
-    row.description = site.get("description")
-    row.verified_at = site.get("verified_at")
-    row.source = site["source"]
-    row.source_layer = site["source_layer"]
-    row.source_object_id = site["source_object_id"]
-    row.source_hash = site["source_hash"]
-    row.source_properties = site["source_properties"]
-    row.status = "active"
-    row.imported_at = site["imported_at"]
-
-
-@app.get("/api/v0.1/reference-sites", response_model=list[ReferenceSiteOut])
-def list_reference_sites(
-    category: str | None = Query(default=None),
-    q: str | None = Query(default=None, max_length=120),
-    status: str = Query(default="active"),
-    limit: int = Query(default=1000, ge=1, le=5000),
-    db: Session = Depends(get_db),
-):
-    stmt = select(ReferenceSiteRow).where(ReferenceSiteRow.status == status)
-    if category:
-        stmt = stmt.where(ReferenceSiteRow.category == category.upper())
-    if q and q.strip():
-        text = q.strip()
-        term = f"%{text}%"
-        criteria = [
-            ReferenceSiteRow.name.ilike(term),
-            ReferenceSiteRow.callsign.ilike(term),
-            ReferenceSiteRow.mode.ilike(term),
-            ReferenceSiteRow.subtype.ilike(term),
-            ReferenceSiteRow.description.ilike(term),
-        ]
-        try:
-            frequency = float(text.replace(",", "."))
-            criteria.extend([
-                func.abs(ReferenceSiteRow.rx_mhz - frequency) < 0.001,
-                func.abs(ReferenceSiteRow.tx_mhz - frequency) < 0.001,
-            ])
-        except ValueError:
-            pass
-        stmt = stmt.where(or_(*criteria))
-    rows = db.scalars(
-        stmt.order_by(ReferenceSiteRow.category, ReferenceSiteRow.name).limit(limit)
-    ).all()
-    return [reference_site_dict(row) for row in rows]
-
-
-@app.post("/api/v0.1/reference-sites/import/umap")
-async def import_umap_reference_sites(
-    file: UploadFile = File(...),
-    source: str = Form("umap:adrasec78"),
-    apply: bool = Form(False),
-    db: Session = Depends(get_db),
-):
-    raw = await file.read(REFERENCE_IMPORT_MAX_BYTES + 1)
-    if len(raw) > REFERENCE_IMPORT_MAX_BYTES:
-        raise HTTPException(status_code=413, detail="reference_file_too_large")
-    try:
-        document = json.loads(raw.decode("utf-8-sig"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        raise HTTPException(status_code=400, detail="invalid_umap_json")
-
-    sites = parse_umap_reference_sites(document, source=source)
-    if not sites:
-        raise HTTPException(status_code=422, detail="no_supported_reference_sites")
-
-    layers = tuple(REFERENCE_LAYERS.keys())
-    existing = db.scalars(select(ReferenceSiteRow).where(
-        ReferenceSiteRow.source == source,
-        ReferenceSiteRow.source_layer.in_(layers),
-    )).all()
-    by_key = {(row.source_layer, row.source_object_id): row for row in existing}
-    desired_keys = {(site["source_layer"], site["source_object_id"]) for site in sites}
-
-    changes = []
-    created = modified = archived = unchanged = 0
-    for site in sites:
-        key = (site["source_layer"], site["source_object_id"])
-        row = by_key.get(key)
-        if row is None:
-            created += 1
-            changes.append({"action": "create", "category": site["category"], "name": site["name"]})
-            if apply:
-                row = ReferenceSiteRow(id=site["id"])
-                _set_reference_site(row, site)
-                db.add(row)
-        elif row.source_hash != site["source_hash"] or row.status != "active":
-            modified += 1
-            changes.append({"action": "update", "category": site["category"], "name": site["name"]})
-            if apply:
-                _set_reference_site(row, site)
-        else:
-            unchanged += 1
-
-    for row in existing:
-        key = (row.source_layer, row.source_object_id)
-        if key not in desired_keys and row.status != "archived":
-            archived += 1
-            changes.append({"action": "archive", "category": row.category, "name": row.name})
-            if apply:
-                row.status = "archived"
-                row.imported_at = datetime.now(UTC)
-
-    if apply:
-        db.commit()
-
-    return {
-        "applied": apply,
-        "source": source,
-        "source_file": file.filename,
-        "parsed": len(sites),
-        "summary": {
-            "created": created,
-            "modified": modified,
-            "archived": archived,
-            "unchanged": unchanged,
-        },
-        "changes": changes[:500],
-        "changes_truncated": len(changes) > 500,
-    }
 
 
 
@@ -697,7 +555,7 @@ def _apply_operation(db: Session, op: SyncOperationIn, now: datetime,
                                         position_time=row.time, battery_pct=row.battery_pct)
         event = db.get(EventRow, op.event_id)
         if event is not None:
-            aprs_service.queue_transmission(event.settings, device, p["lat"], p["lon"], now)
+            module_hooks.position_received(event.settings, device, p["lat"], p["lon"], now)
         return status, cursor, {"type": "position.updated", "data": p}
     if op.object_type == "poi" and db.get(POIRow, op.object_id) is None:
         row = POIRow(

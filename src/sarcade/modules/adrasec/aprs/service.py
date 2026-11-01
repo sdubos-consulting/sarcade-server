@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session
 from sarcade.db.models import AprsGroupRow, DeviceRow, EventRow, PositionRow
 from sarcade.events import settings as event_settings
 
-from . import callsigns as calls
+from sarcade.domain import callsigns as calls
 from . import encode, kiss, parser
 
 log = logging.getLogger("sarcade.aprs")

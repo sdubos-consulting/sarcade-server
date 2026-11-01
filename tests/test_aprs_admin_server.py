@@ -1,7 +1,7 @@
 """APRS-IS server set in the administration (decision of 26 Oct 2026)."""
 import pytest
 
-from sarcade.aprs import links
+from sarcade.modules.adrasec.aprs import links
 from sarcade.updates import policy
 
 

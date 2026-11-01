@@ -13,8 +13,8 @@ from sqlalchemy.orm import Session
 from sarcade.security import journal
 from sarcade.updates.service import get_value, set_value
 
-from .deps import get_db
-from .roles import require_admin_email
+from sarcade.api.deps import get_db
+from sarcade.api.roles import require_admin_email
 
 router = APIRouter(prefix="/api/v0.1")
 KEY = "signal_defaults"
