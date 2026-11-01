@@ -18,6 +18,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
+from geoalchemy2.shape import to_shape
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -198,7 +199,8 @@ def _traces(db: Session, event_id: str, opts: dict, shown: list[dict]) -> list[d
     by: dict[str, dict] = {}
     for r in rows:
         t = by.setdefault(r.device_id, {"device_id": r.device_id, "aprs": r.source == "aprs", "points": []})
-        t["points"].append([round(r.lat, 6), round(r.lon, 6)])
+        p = to_shape(r.point)  # geography column: no .lat / .lon on the row
+        t["points"].append([round(p.y, 6), round(p.x, 6)])
     out = [t for t in by.values() if len(t["points"]) > 1]
     if len(_TRACES_CACHE) > 200:
         _TRACES_CACHE.clear()
