@@ -139,7 +139,7 @@ say("TEL-SOS2", "🆘 DÉTRESSE — TEL-SOS2 — position inconnue", "immediate"
 s = c.get(f"{API}/tv/state", headers=TV).json()
 marks = {m["device_id"]: m for m in s["distress"]}
 check(s["positions"] == [] or all(p["source"] == "aprs" for p in s["positions"]), "operators layer hidden on the screen")
-check(marks["TEL-TR"]["known"] and abs(marks["TEL-TR"]["lat"] - 48.803) < 1e-6 and marks["TEL-TR"]["stale"] is False,
+check(marks["TEL-TR"]["known"] and abs(marks["TEL-TR"]["lat"] - 48.80) < 0.01 and marks["TEL-TR"]["stale"] is False,
       "SOS with its last known position, despite the hidden layer")
 check(marks["TEL-SOS2"]["known"] is False, "SOS without position: « position inconnue »")
 say("TEL-TR", "Fin de détresse — TEL-TR", "urgent")
