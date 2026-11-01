@@ -647,16 +647,71 @@ def test_tv_marks_bearings_set_aside():
 # --- Aircraft on the TV and theme of a screen (1 Nov 2026) ---------------
 
 def test_aircraft_filters_pushed_with_the_view():
-    o = tv.clean_display_options({"layers": {"aircraft": True}, "aircraft_max_ft": 10000, "aircraft_ground": False})
-    assert o["layers"]["aircraft"] is True and o["aircraft_max_ft"] == 10000 and o["aircraft_min_ft"] == 0
-    assert "aircraft_max_ft" not in tv.clean_display_options({})
-    assert tv.clean_display_options({"layers": {"aircraft": True}, "aircraft_max_ft": -5})["aircraft_max_ft"] is None
-    low = {"alt_ft": 2000}
-    high = {"alt_ft": 37000}
+    """Bands of the application (1 Nov 2026, 11 h 38): thresholds 3 000 and
+    10 000 ft, Bas and Moyen shown by default (the former 0 → 10 000 ft)."""
+    o = tv.clean_display_options({"layers": {"aircraft": True}})
+    assert o["aircraft_low_ft"] == 3000 and o["aircraft_high_ft"] == 10000
+    assert o["aircraft_bands"] == {"low": True, "mid": True, "high": False}
+    assert o["aircraft_ground"] is False and o["aircraft_followed"] == []
+    assert "aircraft_bands" not in tv.clean_display_options({})
+    low, mid, high = {"alt_ft": 2000}, {"alt_ft": 8000}, {"alt_ft": 37000}
     ground = {"alt_ft": 300, "on_ground": True}
     urgent = {"alt_ft": 37000, "emergency": "emergency"}
-    assert [tv.aircraft_shown(a, o) for a in (low, high, ground, urgent)] == [True, False, False, True]
-    assert tv.aircraft_shown({"alt_ft": None}, o) and not tv.aircraft_shown({"alt_ft": None}, {**o, "aircraft_min_ft": 1000})
+    assert [tv.aircraft_shown(a, o) for a in (low, mid, high, ground, urgent)] == [True, True, False, False, True]
+    assert tv.aircraft_shown({"alt_ft": None}, o), "unknown altitude follows Bas"
+    # The porteur's example: Moyen alone.
+    only_mid = tv.clean_display_options({"layers": {"aircraft": True}, "aircraft_bands": {"low": False, "mid": True, "high": False}})
+    assert [tv.aircraft_shown(a, only_mid) for a in (low, mid, high, urgent)] == [False, True, False, True]
+    assert not tv.aircraft_shown({"alt_ft": None}, only_mid)
+
+
+def test_aircraft_thresholds_move_the_bands():
+    o = tv.clean_display_options({"layers": {"aircraft": True}, "aircraft_low_ft": 1500, "aircraft_high_ft": 5000,
+                                  "aircraft_bands": {"low": True, "mid": False, "high": True}})
+    assert (o["aircraft_low_ft"], o["aircraft_high_ft"]) == (1500, 5000)
+    assert [tv.aircraft_band({"alt_ft": f}, o) for f in (1500, 1501, 5000, 5001)] == ["low", "mid", "mid", "high"]
+    assert tv.aircraft_band({"alt_ft": None}, o) == "ground" and tv.aircraft_band({"alt_ft": 900, "on_ground": True}, o) == "ground"
+    assert [tv.aircraft_shown({"alt_ft": f}, o) for f in (1000, 3000, 20000)] == [True, False, True]
+    # Out of range or crossed thresholds: the defaults.
+    for bad in ({"aircraft_low_ft": 6000, "aircraft_high_ft": 5000}, {"aircraft_low_ft": -1, "aircraft_high_ft": 5000},
+                {"aircraft_low_ft": 1000, "aircraft_high_ft": 50000}, {"aircraft_low_ft": True, "aircraft_high_ft": 5000}):
+        b = tv.clean_display_options({"layers": {"aircraft": True}, **bad})
+        assert (b["aircraft_low_ft"], b["aircraft_high_ft"]) == (3000, 10000)
+
+
+def test_aircraft_view_of_181_is_converted():
+    """A view sent before the bands (range min → max of #181)."""
+    def bands(**v):
+        return tv.clean_display_options({"layers": {"aircraft": True}, **v})["aircraft_bands"]
+    assert bands(aircraft_min_ft=0, aircraft_max_ft=10000) == {"low": True, "mid": True, "high": False}
+    assert bands(aircraft_min_ft=0, aircraft_max_ft=None) == {"low": True, "mid": True, "high": True}
+    assert bands(aircraft_min_ft=5000, aircraft_max_ft=None) == {"low": False, "mid": True, "high": True}
+    assert bands(aircraft_min_ft=0, aircraft_max_ft=2000) == {"low": True, "mid": False, "high": False}
+    assert bands(aircraft_min_ft=12000, aircraft_max_ft=20000) == {"low": False, "mid": False, "high": True}
+    assert bands(aircraft_max_ft=-5) == {"low": True, "mid": True, "high": True}, "bad ceiling = no ceiling"
+    o = tv.clean_display_options({"layers": {"aircraft": True}, "aircraft_min_ft": 0, "aircraft_max_ft": 10000})
+    assert "aircraft_min_ft" not in o and "aircraft_max_ft" not in o
+
+
+def test_aircraft_followed_pushed_with_the_view():
+    o = tv.clean_display_options({"layers": {"aircraft": True},
+                                  "aircraft_followed": ["3C6444", "3c6444", "nope", 5, "abc123", *[f"{i:06x}" for i in range(30)]]})
+    assert o["aircraft_followed"][:2] == ["3c6444", "abc123"] and len(o["aircraft_followed"]) == tv.MAX_FOLLOWED
+    # A followed aircraft stays shown, whatever the bands.
+    assert tv.aircraft_shown({"icao24": "3c6444", "alt_ft": 37000}, o)
+    assert not tv.aircraft_shown({"icao24": "aaaaaa", "alt_ft": 37000}, o)
+
+
+def test_tv_page_aircraft_same_palette_icons_and_no_trace():
+    from sarcade.api import tv as tv_page
+    page = tv_page._TV
+    for colour in ("#F57C00", "#1565C0", "#607D8B", "#78909C", "#D32F2F", "#8E24AA"):
+        assert colour in page, colour
+    for kind in ("plane", "light", "airliner", "glider", "ulm", "heli", "balloon", "drone", "parachute"):
+        assert f'"{kind}":{{"d":"M' in page, kind
+    assert "a.trail" not in page, "no short trace on the TV"
+    assert "AC_EST_MAX=60" in page and "iconAnchor:[half,half]" in page
+    assert "acLeg" in page and "aircraft_tracks" in page
 
 
 def test_theme_of_the_screen_wins():
