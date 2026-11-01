@@ -377,8 +377,9 @@ def _time(value) -> datetime | None:
 
 def apply_view(snap: dict, view: dict | None, now: datetime, *, weather: dict | None = None,
                drawings: list | None = None, bearings: list | None = None,
-               references: list | None = None) -> dict:
-    """Keeps in the snapshot only what the layers of the view show."""
+               references: list | None = None, zone_modes: dict | None = None) -> dict:
+    """Keeps in the snapshot only what the layers of the view show;
+    ``zone_modes``: mode of each searched signal (settings of the event)."""
     opts = display_options(view)
     layers = opts["layers"]
 
@@ -399,7 +400,7 @@ def apply_view(snap: dict, view: dict | None, now: datetime, *, weather: dict | 
         out["drawings"] = drawings if layers["drawings"] else []
     if bearings is not None:
         out["bearings"] = bearings if layers["bearings"] else []
-        out["zones"] = probable_zones(out["bearings"])
+        out["zones"] = probable_zones(out["bearings"], zone_modes)
     if references is not None:
         out["references"] = [r for r in references
                              if (r.get("category") == "HIGH_POINT" and layers["highpoints"])
@@ -654,14 +655,24 @@ def robust_zone(group: list[dict]) -> dict:
 
 
 # Several beacons on the same signal (card « Zone probable : plusieurs zones
-# quand il y a plusieurs balises », option 1 validated 1 Nov 2026, 7 h 44):
-# a second zone only from bearings that agree among themselves. Same rule
-# as `probableZones` of the application, keep in step.
+# quand il y a plusieurs balises », option 1 validated 1 Nov 2026, 7 h 44;
+# corrected by the card « Plusieurs zones : le découpage ne se fait pas
+# quand un relevé est gardé à la main », points 1 to 13 validated 1 Nov 2026,
+# 11 h 11 and 11 h 52): a second zone only from bearings that agree among
+# themselves. Same rule as `probableZones` of the application, keep in step.
 SPLIT_MIN_BEARINGS = 2 * MIN_KEPT
 SEED_MAX_RADIUS_M = 2000.0       # three bearings crossing within 2 km
 ZONE_MAX_RADIUS_M = 3000.0       # a wide zone is never created
 MIN_ORIGIN_SPREAD_M = 100.0      # taken from two places at least
 MAX_ZONES = 4
+# Mode of a searched signal (point 8), kept on the server for the event and
+# the signal (point 11, settings ``zone_modes``): « Auto » (automatic
+# splitting), « Plusieurs balises » (forced: relaxed thresholds, seeds and
+# zones up to 5 km), « Une seule balise » (one circle, as before #95).
+ZONE_MODES = ("auto", "multi", "single")
+MULTI_SEED_MAX_RADIUS_M = 5000.0
+MULTI_ZONE_MAX_RADIUS_M = 5000.0
+MODE_LABELS = {"multi": "plusieurs balises", "single": "une seule balise"}
 
 
 def _spread(group: list[dict], ids) -> bool:
@@ -669,15 +680,46 @@ def _spread(group: list[dict], ids) -> bool:
     return any(distance_m(a, b) >= MIN_ORIGIN_SPREAD_M for x, a in enumerate(pts) for b in pts[x + 1:])
 
 
-def split_zones(group: list[dict]) -> list[dict] | None:
+def _agreement(b: dict, centre: tuple[float, float], radius: float) -> float | None:
+    """Miss of a bearing over its tolerance for a zone (≤ 1: it agrees);
+    None when the zone lies on the extension of the drawn bearing."""
+    miss, along = _miss(b, centre)
+    cone = float(b.get("cone_deg") if b.get("cone_deg") is not None else 5)
+    tol = max(MIN_TOLERANCE_M, along * math.tan(math.radians(max(cone, 1.0)))) + 0.5 * radius
+    if along > float(b.get("length_m") or 10_000) + tol:
+        return None
+    return miss / tol
+
+
+def _geometry(group: list[dict], members: set[int]) -> tuple[tuple[float, float], float, list] | None:
+    pts = _crossings(group, members)
+    if not pts:
+        return None
+    centre = _centre(pts)
+    return centre, _radius(centre, pts), pts
+
+
+def split_zones(group: list[dict], mode: str = "auto") -> list[dict] | None:
     """Two zones or more when the bearings of one signal point at several
-    places: the tightest three bearings (crossing within SEED_MAX_RADIUS_M,
+    places: the tightest three bearings (crossing within the seed radius,
     taken from two places at least) seed a zone, the bearings that agree
     with it join, and again with the others. None when there is a single
-    zone (the robust zone then applies, unchanged) or when a bearing was
-    put in the zone by hand."""
+    zone (the robust zone then applies) or in « Une seule balise » mode.
+
+    - a bearing set aside by hand (« out ») stays out (point 3);
+    - a bearing kept by hand (« in ») no longer prevents the splitting
+      (point 1): left alone, it joins the zone it agrees with, else zone 1
+      (point 2);
+    - a zone that grows beyond the zone radius keeps its seed and only the
+      bearings that do not widen it beyond (point 5); the zones already
+      found are never given up (point 6);
+    - « Plusieurs balises »: seeds and zones up to 5 km (point 8)."""
+    if mode == "single":
+        return None
+    seed_max = MULTI_SEED_MAX_RADIUS_M if mode == "multi" else SEED_MAX_RADIUS_M
+    zone_max = MULTI_ZONE_MAX_RADIUS_M if mode == "multi" else ZONE_MAX_RADIUS_M
     cand = [i for i, b in enumerate(group) if b.get("zone") != "out"]
-    if len(cand) < SPLIT_MIN_BEARINGS or any(group[i].get("zone") == "in" for i in cand):
+    if len(cand) < SPLIT_MIN_BEARINGS:
         return None
     remaining, zones = set(cand), []
     while len(zones) < MAX_ZONES and len(remaining) >= MIN_KEPT:
@@ -692,35 +734,55 @@ def split_zones(group: list[dict]) -> list[dict] | None:
                         continue
                     c = _centre(pts)
                     r = max(distance_m(c, p[0]) for p in pts)
-                    if r <= SEED_MAX_RADIUS_M and (best is None or r < best[0]):
+                    if r <= seed_max and (best is None or r < best[0]):
                         best = (r, set(seed), c)
         if best is None:
             break
-        r, members, c = best
-        for i in sorted(remaining - members):
-            miss, along = _miss(group[i], c)
-            cone = float(group[i].get("cone_deg") if group[i].get("cone_deg") is not None else 5)
-            tol = max(MIN_TOLERANCE_M, along * math.tan(math.radians(max(cone, 1.0)))) + 0.5 * r
-            # The zone must lie on the drawn bearing, not on its extension.
-            if miss <= tol and along <= float(group[i].get("length_m") or 10_000) + tol:
-                members.add(i)
-        pts = _crossings(group, members)
-        centre = _centre(pts)
-        radius = _radius(centre, pts)
-        if radius > ZONE_MAX_RADIUS_M:
-            break
-        zones.append({"members": members, "centre": centre, "radius_m": radius,
-                      "crossings": [[round(p[0][0], 6), round(p[0][1], 6)] for p in pts]})
+        r, seed, c = best
+        agree = []
+        for i in sorted(remaining - seed):
+            ratio = _agreement(group[i], c, r)
+            if ratio is not None and ratio <= 1:
+                agree.append((ratio, i))
+        members = seed | {i for _, i in agree}
+        centre, radius, pts = _geometry(group, members)
+        if radius > zone_max:
+            # Point 5: the seed, then the bearings that agree best, each one
+            # only if the zone stays within the zone radius.
+            members = set(seed)
+            for _, i in sorted(agree):
+                g = _geometry(group, members | {i})
+                if g is not None and g[1] <= zone_max:
+                    members.add(i)
+            centre, radius, pts = _geometry(group, members)
+        zones.append({"members": members, "centre": centre, "radius_m": radius, "pts": pts})
         remaining -= members
     if len(zones) < 2:
         return None
     zones.sort(key=lambda z: -len(z["members"]))
+    # Point 2: a bearing kept by hand left alone joins the zone it agrees
+    # with best, else zone 1.
+    for i in sorted(remaining):
+        if group[i].get("zone") != "in":
+            continue
+        ratios = [(_agreement(group[i], z["centre"], z["radius_m"]), n) for n, z in enumerate(zones)]
+        ok = [(r, n) for r, n in ratios if r is not None and r <= 1]
+        target = zones[min(ok)[1] if ok else 0]
+        target["members"].add(i)
+        target["centre"], target["radius_m"], target["pts"] = _geometry(group, target["members"])
     inside = set().union(*(z["members"] for z in zones))
     excluded = [group[i].get("id") for i in range(len(group)) if i not in inside]
+    auto = [group[i].get("id") for i in range(len(group)) if i not in inside and group[i].get("zone") != "out"]
     for z in zones:
         z["used"] = len(z["members"])
         z["excluded"] = excluded
+        z["auto_excluded"] = auto
+        z["crossings"] = [[round(p[0][0], 6), round(p[0][1], 6)] for p in z.pop("pts")]
     return zones
+
+
+def clean_mode(mode) -> str:
+    return mode if mode in ZONE_MODES else "auto"
 
 
 def zone_label(radius_m: float, used: int, excluded: int) -> str:
@@ -736,30 +798,38 @@ def zone_label(radius_m: float, used: int, excluded: int) -> str:
     return text
 
 
-def probable_zones(bearings: list[dict]) -> list[dict]:
-    """Crossings of each search and its probable zone (robust_zone)."""
+def probable_zones(bearings: list[dict], modes: dict | None = None) -> list[dict]:
+    """Crossings of each search and its probable zones (split_zones, else
+    robust_zone), in the mode of the search (``modes``: search_key → mode,
+    settings ``zone_modes`` of the event). The label tells the mode when it
+    is not « Auto » (point 12): « Zone 1 · plusieurs balises · ±700 m · … »,
+    « Une seule balise · ±7,7 km · … »."""
     groups: dict[str, list[dict]] = {}
     for b in bearings:
         groups.setdefault(b.get("search") or "", []).append(b)
     out = []
     for search, group in sorted(groups.items()):
         exercise = any(b.get("exercise") for b in group)
-        split = split_zones(group)
+        mode = clean_mode((modes or {}).get(search_key(search)))
+        split = split_zones(group, mode)
         if split:
             for n, z in enumerate(split, start=1):
                 (lat, lon), radius = z["centre"], z["radius_m"]
-                label = f"Zone {n} · " + zone_label(radius, z["used"], len(z["excluded"]) if n == 1 else 0)
+                head = f"Zone {n} · " + (f"{MODE_LABELS[mode]} · " if mode in MODE_LABELS else "")
+                label = head + zone_label(radius, z["used"], len(z["excluded"]) if n == 1 else 0)
                 out.append({"search": search, "color": search_color(search), "exercise": exercise, "index": n,
-                            "bearings": z["used"], "crossings": z["crossings"], "excluded": z["excluded"],
-                            "lat": round(lat, 6), "lon": round(lon, 6), "radius_m": round(radius, 1), "label": label})
+                            "mode": mode, "bearings": z["used"], "crossings": z["crossings"],
+                            "excluded": z["excluded"], "lat": round(lat, 6), "lon": round(lon, 6),
+                            "radius_m": round(radius, 1), "label": label})
             continue
         z = robust_zone(group)
-        zone = {"search": search, "color": search_color(search), "exercise": exercise,
+        zone = {"search": search, "color": search_color(search), "exercise": exercise, "mode": mode,
                 "bearings": z["used"], "crossings": z["crossings"], "excluded": z["excluded"]}
         if "centre" in z:
             (lat, lon), radius = z["centre"], z["radius_m"]
+            head = MODE_LABELS[mode].capitalize() + " · " if mode in MODE_LABELS else ""
             zone.update(lat=round(lat, 6), lon=round(lon, 6), radius_m=round(radius, 1),
-                        label=zone_label(radius, z["used"], len(z["excluded"])))
+                        label=head + zone_label(radius, z["used"], len(z["excluded"])))
         out.append(zone)
     return out
 
