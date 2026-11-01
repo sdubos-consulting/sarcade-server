@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from sarcade.updates import service as updates_service
-from sarcade.aprs import callsigns as calls
+from sarcade.domain import callsigns as calls
 from sarcade.db.models import DeviceRow, EventRow, LogbookRow
 from sarcade.events import contacts as event_contacts
 from sarcade.events import settings as event_settings

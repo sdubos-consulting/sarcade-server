@@ -12,7 +12,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from sarcade import tv
-from sarcade.api import signals
+from sarcade.modules.adrasec import api_signals as signals
 from sarcade.api.app import app
 from sarcade.api.deps import get_db
 from sarcade.db.base import Base

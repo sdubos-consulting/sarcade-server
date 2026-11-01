@@ -48,7 +48,7 @@ def test_aprs_settings_need_adrasec():
 
 
 def test_no_followed_callsigns_without_adrasec():
-    from sarcade.aprs.service import event_callsigns
+    from sarcade.modules.adrasec.aprs.service import event_callsigns
 
     class Ev:
         settings = {"modules": [], "aprs_callsigns": ["F4ABC"]}

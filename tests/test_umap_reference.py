@@ -1,4 +1,4 @@
-from sarcade.reference.umap import parse_umap_reference_sites
+from sarcade.modules.adrasec.reference.umap import parse_umap_reference_sites
 
 
 def test_parses_two_reference_categories():

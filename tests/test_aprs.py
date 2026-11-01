@@ -2,9 +2,9 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from sarcade.aprs import callsigns as calls
-from sarcade.aprs import encode, kiss, parser
-from sarcade.aprs.service import Deduplicator, packet_key
+from sarcade.domain import callsigns as calls
+from sarcade.modules.adrasec.aprs import encode, kiss, parser
+from sarcade.modules.adrasec.aprs.service import Deduplicator, packet_key
 from sarcade.events import settings as event_settings
 
 
@@ -122,7 +122,7 @@ def test_event_settings_validate_aprs_callsigns():
 
 def test_radio_transmission_needs_pco_decision_consent_and_callsigns(monkeypatch):
     import asyncio
-    from sarcade.aprs import service
+    from sarcade.modules.adrasec.aprs import service
     from sarcade.db.models import DeviceRow
 
     rt = service.AprsRuntime()
@@ -149,7 +149,7 @@ def test_radio_transmission_needs_pco_decision_consent_and_callsigns(monkeypatch
 
 
 def test_station_linked_to_a_terminal_only_with_the_exact_ssid():
-    from sarcade.aprs import service
+    from sarcade.modules.adrasec.aprs import service
     from sarcade.db.models import DeviceRow
 
     class _Db:
@@ -172,7 +172,7 @@ def test_group_names_unique():
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy.pool import StaticPool
 
-    from sarcade.api import aprs as aprs_api
+    from sarcade.modules.adrasec import api_aprs as aprs_api
     from sarcade.db.base import Base
     from sarcade.db.models import AprsGroupRow
 
@@ -197,7 +197,7 @@ def test_station_classified_by_hand_shared_by_the_event():
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy.pool import StaticPool
 
-    from sarcade.api import aprs as aprs_api
+    from sarcade.modules.adrasec import api_aprs as aprs_api
     from sarcade.db.base import Base
     from sarcade.db.models import AprsStationClassRow, EventRow
 
