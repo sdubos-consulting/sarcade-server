@@ -602,3 +602,19 @@ def test_never_below_three_bearings_kept():
     assert z["bearings"] >= 3 and len(z["excluded"]) <= 1
     [z] = tv.probable_zones([*GOOD[:2], wild1])
     assert z["excluded"] == [] and z["bearings"] == 3
+
+
+def test_same_signal_whatever_the_apostrophe():
+    """1 Nov 2026: « Balise d'exercice » (old bearings) and « Balise d’exercice »
+    (after #77) gave two legends and two probable zones on the TV."""
+    assert tv.search_key("Balise d'exercice") == tv.search_key("  balise  d’EXERCICE ") == tv.search_key("Balise d`exercice")
+    assert tv.search_key("Réseau") == tv.search_key("reseau")
+    a, b = "121,375 MHz · Balise d'exercice", "121,375 MHz · Balise d’exercice"
+    old = _towards(48.75, 2.10, TARGET, search=a, color=tv.search_color(a))
+    new = [_towards(48.80, 2.03, TARGET, search=b, color=tv.search_color(b)),
+           _towards(48.75, 2.04, TARGET, search=b, color=tv.search_color(b))]
+    unified = tv.unify_searches([old, *new])
+    assert {b["search"] for b in unified} == {"121,375 MHz · Balise d’exercice"}
+    assert len({b["color"] for b in unified}) == 1
+    [z] = tv.probable_zones(unified)
+    assert z["bearings"] == 3
