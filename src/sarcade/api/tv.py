@@ -365,6 +365,10 @@ class ViewIn(BaseModel):
     only the first view of a follow goes to the logbook."""
     view: dict | None = None
     live: bool = False
+    # « Colonne des messages » ticked or unticked on purpose when sending;
+    # otherwise the screen keeps its own choice (1 Nov 2026: a followed view
+    # brought back the messages hidden on the screen).
+    messages: bool | None = None
 
 
 @router.put("/api/v0.1/events/{event_id}/displays/{display_id}/view")
@@ -379,8 +383,8 @@ def send_view(event_id: str, display_id: str, body: ViewIn, request: Request, db
             following = bool(body.live and view is not None and d.get("live"))
             d["view"] = view
             d["live"] = bool(body.live and view is not None)
-            if view is not None:
-                d["messages"] = view["messages"]
+            if body.messages is not None:
+                d["messages"] = body.messages
             set_value(db, KEY, displays)
             if following:
                 db.commit()
