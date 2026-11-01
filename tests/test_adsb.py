@@ -1,5 +1,6 @@
 """ADS-B step 1 (OpenSky), module ADRASEC (1 Nov 2026)."""
 import asyncio
+import time
 
 import httpx
 import pytest
@@ -19,6 +20,10 @@ def test_parse_states_units_and_flags():
     assert a["callsign"] == "SAMU75" and a["alt_m"] == 950 and a["alt_ft"] == 3117
     assert a["speed_kt"] == 100 and a["track_deg"] == 272 and a["rotorcraft"] is True
     assert a["emergency"] is None
+    assert a["category"] == 8 and a["position_time"] == 1, "OpenSky time of the position"
+    other = opensky.parse_states({"states": [[*state()[:3], None, *state()[4:17], None]]})[0]
+    assert other["category"] is None and other["position_time"] == 1761960000, "no position time: last contact"
+    assert opensky.parse_states({"states": [state()[:17]]})[0]["category"] is None
     assert opensky.parse_states({"states": [state(squawk="7700")]})[0]["emergency"] == "emergency"
     assert opensky.parse_states({"states": None}) == []
 
@@ -115,6 +120,32 @@ def test_tv_counts_as_a_watcher_and_is_filtered():
     opts = tv_core.clean_display_options({"layers": {"aircraft": True}, "aircraft_max_ft": 10000})
     out = service.tv_state(event, {"id": "d1", "view": {"lat": 48.8, "lon": 2.1}}, opts)
     assert [a["icao24"] for a in out["aircraft"]] == ["3c6444"]
+    assert "trail" not in out["aircraft"][0], "no trace on the TV"
+    assert out["aircraft"][0]["category"] == 8 and out["aircraft_tracks"] == {}
+    assert abs(out["aircraft_now"] - time.time()) < 5, "server clock for the estimated positions"
     assert "e" in service.watched_boxes()
     assert service.tv_state(event, {"id": "d1"}, tv_core.clean_display_options({})) == {}
     assert service.tv_state(EventRow(id="f", settings={"modules": []}), {"id": "d1"}, opts) == {}
+
+
+def test_tv_shows_the_routes_of_the_followed_aircraft_only():
+    """« Envoyer ma vue » with aircraft followed (1 Nov 2026, 11 h 34): their
+    route (30 min) on the TV, no trace for the others."""
+    from sarcade.db.models import EventRow
+    from sarcade import tv as tv_core
+    service.runtime.trails.clear()
+    for k in range(3):
+        a = opensky.parse_states({"states": [state(lon=2.0 + k / 100), state(icao="abc123", lon=2.5 + k / 100)]})
+        service.runtime.latest["e"] = {"time": "t", "aircraft": service.with_trails("e", a, now=1000 + 30 * k)}
+    event = EventRow(id="e", settings={"modules": ["adrasec"]})
+    opts = tv_core.clean_display_options({"layers": {"aircraft": True}, "aircraft_followed": ["3c6444", "dddddd"]})
+    out = service.tv_state(event, {"id": "d1"}, opts)
+    assert list(out["aircraft_tracks"]) == ["3c6444"], "absent aircraft: no route"
+    assert out["aircraft_tracks"]["3c6444"] == [[48.8, 2.0], [48.8, 2.01], [48.8, 2.02]]
+
+
+def test_latest_and_watch_carry_the_server_clock():
+    from sarcade.modules.adrasec import api_adsb
+    service.runtime.latest["e"] = {"time": "t", "aircraft": []}
+    assert abs(api_adsb._latest("e")["now"] - time.time()) < 5
+    assert api_adsb._latest("none")["aircraft"] == []

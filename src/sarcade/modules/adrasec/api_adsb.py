@@ -45,13 +45,19 @@ def watch(event_id: str, payload: WatchIn, db: Session = Depends(get_db)):
     else:
         service.unwatch(event_id, payload.device_id)
     return {"enabled": service.runtime.enabled, "interval_s": service.interval_s(),
-            "ttl_s": service.WATCH_TTL_S, **(service.runtime.latest.get(event_id) or {"time": None, "aircraft": []})}
+            "ttl_s": service.WATCH_TTL_S, **_latest(event_id)}
+
+
+def _latest(event_id: str) -> dict:
+    """Last aircraft and the server clock (``now``, epoch seconds): the
+    applications estimate the positions from the OpenSky time of each one."""
+    return {**(service.runtime.latest.get(event_id) or {"time": None, "aircraft": []}), "now": round(time.time(), 1)}
 
 
 @router.get("/events/{event_id}/adsb")
 def latest(event_id: str, db: Session = Depends(get_db)):
     _adrasec_event(db, event_id)
-    return service.runtime.latest.get(event_id) or {"time": None, "aircraft": []}
+    return _latest(event_id)
 
 
 @router.get("/events/{event_id}/adsb/{icao24}/track")
