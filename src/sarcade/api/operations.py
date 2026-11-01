@@ -17,6 +17,7 @@ from sarcade.domain import callsigns as calls
 from sarcade.db.models import DeviceRow, EventRow, LogbookRow
 from sarcade.events import contacts as event_contacts
 from sarcade.events import settings as event_settings
+from sarcade.profile.preferences import OPERATOR_ICONS
 from sarcade.realtime.manager import manager
 
 from .deps import get_db
@@ -45,6 +46,8 @@ class Heartbeat(BaseModel):
     tracking_interval_s: int | None = Field(default=None, ge=1, le=86400)
     callsign: str | None = Field(default=None, max_length=16)
     aprs_tx_consent: bool | None = None
+    # Icon of the operator on the map; "" removes it (1 Nov 2026).
+    icon: str | None = Field(default=None, max_length=16)
 
 
 def clean_battery(value) -> int | None:
@@ -73,7 +76,7 @@ def device_dict(row: DeviceRow, settings: dict, now: datetime) -> dict:
         "battery_pct": row.battery_pct, "pending_count": row.pending_count,
         "oldest_pending_at": utc(row.oldest_pending_at),
         "tracking_enabled": row.tracking_enabled, "tracking_interval_s": row.tracking_interval_s,
-        "callsign": row.callsign, "aprs_tx_consent": row.aprs_tx_consent,
+        "callsign": row.callsign, "aprs_tx_consent": row.aprs_tx_consent, "icon": row.icon,
         "last_contact_at": utc(row.last_contact_at), "last_position_at": utc(row.last_position_at),
         # Same as last_contact_at, under the name used by the operators list.
         "last_seen": utc(row.last_contact_at),
@@ -190,6 +193,10 @@ async def heartbeat(event_id: str, device_id: str, payload: Heartbeat, db: Sessi
                 raise HTTPException(status_code=422, detail="invalid_callsign")
         else:
             row.callsign = None
+    if payload.icon is not None:
+        if payload.icon and payload.icon not in OPERATOR_ICONS:
+            raise HTTPException(status_code=422, detail="invalid_icon")
+        row.icon = payload.icon or None
     event_contacts.on_version(db, row, payload.app_version, payload.label, payload.platform, now)
     for field in ("label", "platform", "app_version", "pending_count",
                   "oldest_pending_at", "tracking_enabled", "aprs_tx_consent"):

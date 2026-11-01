@@ -258,11 +258,16 @@ def clean_view(view: dict | None, now: float | None = None) -> dict | None:
 # --- « Envoyer ma vue », step 2: layers, opacities, messages panel --------
 
 DEFAULT_LAYERS = {"operators": True, "aprs": True, "offline": True, "drawings": True, "bearings": True,
-                  "highpoints": False, "relays": False}
+                  "highpoints": False, "relays": False, "traces": False}
+# Traces of the phone shown on the TV (1 Nov 2026): duration in minutes and
+# traces pinned one by one (ids), as in « Fond et affichage ».
+TRACE_WINDOWS = (15, 30, 60, 120, 180, 360, 720, 1440)
+MAX_TRACE_IDS = 50
+MAX_TRACE_POINTS = 500
 # One opacity per layer (card « Panneau des couches, opacité incohérente »,
 # 30 Oct 2026): APRS, high points and relays apart; a view of the former
 # format (ops, draw, brg, ref) gives its group value to the new keys.
-DEFAULT_OPACITY = {"ops": 1.0, "aprs": 1.0, "draw": 1.0, "brg": 1.0, "high": 1.0, "relay": 1.0}
+DEFAULT_OPACITY = {"ops": 1.0, "aprs": 1.0, "draw": 1.0, "brg": 1.0, "high": 1.0, "relay": 1.0, "traces": 1.0}
 OPACITY_LEGACY = {"aprs": "ops", "high": "ref", "relay": "ref"}
 # Same threshold as the « opérateurs actifs » counter of the TV page.
 OFFLINE_AFTER = timedelta(minutes=10)
@@ -302,7 +307,16 @@ def clean_display_options(view: dict) -> dict:
     theme = view.get("theme") or "auto"
     if theme not in THEMES:
         raise ValueError("invalid_theme")
-    return {"layers": out_layers, "opacity": out_opacity, "messages": messages, "from": sender.strip(), "theme": theme}
+    window = view.get("traces_window", 60)
+    if isinstance(window, bool) or window not in TRACE_WINDOWS:
+        window = 60
+    ids = view.get("traces_ids") or []
+    if not isinstance(ids, list) or len(ids) > MAX_TRACE_IDS or not all(isinstance(x, str) and 0 < len(x) <= 64 for x in ids):
+        raise ValueError("invalid_traces")
+    out = {"layers": out_layers, "opacity": out_opacity, "messages": messages, "from": sender.strip(), "theme": theme}
+    if out_layers["traces"] or ids:
+        out.update(traces_window=window, traces_ids=list(dict.fromkeys(ids)))
+    return out
 
 
 def display_options(view: dict | None) -> dict:

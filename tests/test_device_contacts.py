@@ -155,3 +155,15 @@ def test_admin_required_without_checked_email():
     with pytest.raises(HTTPException) as exc:
         require_admin_email(SimpleNamespace(state=SimpleNamespace()), None)
     assert exc.value.status_code == 403
+
+
+def test_heartbeat_carries_the_operator_icon(client, db):
+    """1 Nov 2026: icon chosen in Paramètres › Profil, shown to every device."""
+    url = "/api/v0.1/events/e1/devices/TEL-02/heartbeat"
+    assert client.post(url, json={"icon": "car"}).status_code == 200
+    assert db.get(DeviceRow, ("e1", "TEL-02")).icon == "car"
+    assert client.post(url, json={"icon": "rocket"}).status_code == 422
+    client.post(url, json={"battery_pct": 50})
+    assert db.get(DeviceRow, ("e1", "TEL-02")).icon == "car"   # unchanged when not sent
+    client.post(url, json={"icon": ""})
+    assert db.get(DeviceRow, ("e1", "TEL-02")).icon is None

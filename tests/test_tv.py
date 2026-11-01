@@ -110,11 +110,11 @@ def test_view_layers_opacity_and_messages():
     v = tv.clean_view({**VIEW, "layers": {"aprs": False, "relays": True, "nope": True},
                        "opacity": {"draw": 0.5, "brg": 1}, "messages": False, "extra": 1}, now=1)
     assert v["layers"] == {**tv.DEFAULT_LAYERS, "aprs": False, "relays": True}
-    assert v["opacity"] == {"ops": 1.0, "aprs": 1.0, "draw": 0.5, "brg": 1.0, "high": 1.0, "relay": 1.0}
+    assert v["opacity"] == {"ops": 1.0, "aprs": 1.0, "draw": 0.5, "brg": 1.0, "high": 1.0, "relay": 1.0, "traces": 1.0}
     assert v["messages"] is False and "extra" not in v
     d = tv.clean_view(VIEW, now=1)
     assert d["layers"] == {"operators": True, "aprs": True, "offline": True, "drawings": True,
-                           "bearings": True, "highpoints": False, "relays": False}
+                           "bearings": True, "highpoints": False, "relays": False, "traces": False}
     assert d["messages"] is True
     # Automatic framing (no view) and views stored before step 2: defaults.
     assert tv.display_options(None)["layers"] == tv.DEFAULT_LAYERS
@@ -220,8 +220,8 @@ def test_weather_cache_expires_after_ten_minutes():
 
 
 def test_tv_page_draws_the_layers_with_escaped_texts():
-    for needle in ("drawFeatures", "drawBearings", "drawRefs", "EXERCICE", "msgBox", 'id="wx"',
-                   "esc(f.label)", "esc(z.label)", "esc(r.callsign||r.name)"):
+    for needle in ("drawFeatures", "drawBearings", "drawRefs", '<span class="ex">EX</span>', "msgBox", 'id="wx"',
+                   "esc(f.label)", "String(z.label||'')", "esc(r.callsign||r.name)"):
         assert needle in api._TV
 
 
@@ -338,7 +338,7 @@ def test_approve_records_the_owner():
 
 def test_opacity_per_layer_and_former_format():
     v = tv.clean_view({**VIEW, "opacity": {"ops": 0.8, "aprs": 0.4, "high": 0.3, "relay": 0.6, "brg": 0.5}}, now=1)
-    assert v["opacity"] == {"ops": 0.8, "aprs": 0.4, "draw": 1.0, "brg": 0.5, "high": 0.3, "relay": 0.6}
+    assert v["opacity"] == {"ops": 0.8, "aprs": 0.4, "draw": 1.0, "brg": 0.5, "high": 0.3, "relay": 0.6, "traces": 1.0}
     old = tv.clean_view({**VIEW, "opacity": {"ops": 0.7, "ref": 0.2}}, now=1)
     assert old["opacity"]["aprs"] == 0.7 and old["opacity"]["high"] == 0.2 and old["opacity"]["relay"] == 0.2
     with pytest.raises(ValueError):
@@ -401,7 +401,7 @@ def test_tv_page_lot4():
     assert "Outils › Afficher sur une TV" in t and "Paramètres › Affichage" not in t
     assert "padding:0 20px 0 10px" in t
     assert "blab" not in t                         # no label at the end of the bearings
-    for needle in ('id="legend"', "esc(k||'Sans signal')", "esc(z.label)", "Zone probable", "'Vue de '+v.from",
+    for needle in ('id="legend"', "esc(k||'Sans signal')", "esc(parts.slice(0,2)", "Zone probable", "'Vue de '+v.from",
                    "textContent=v.from", "o.aprs", "o.high", "o.relay", "cone_deg"):
         assert needle in t
 
