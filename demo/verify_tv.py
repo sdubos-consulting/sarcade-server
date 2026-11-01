@@ -61,6 +61,16 @@ check(len(z["crossings"]) == 3 and abs(z["lat"] - 48.80) < 0.01 and z["label"].e
       "probable zone computed by the server")
 check(s["view"] is None and s["default_base"]["tile_url"].startswith("https://"), "default view: base map of the event")
 
+# Traces shown on the phone go to the TV (1 Nov 2026).
+for i in range(4):
+    c.post(f"{API}/positions", json={"id": str(uuid.uuid4()), "event_id": event, "device_id": "TEL-TR",
+                                     "lat": 48.80 + i * 0.001, "lon": 2.10, "time": NOW})
+c.put(f"{E}/displays/{d['id']}/view", json={"view": {"lat": 48.8, "lon": 2.1, "zoom": 13, "layers": {"traces": True},
+                                                    "traces_window": 60}})
+s = c.get(f"{API}/tv/state", headers=TV).json()
+check(any(t["device_id"] == "TEL-TR" and len(t["points"]) == 4 for t in s["traces"]), "traces of the phone on the TV")
+c.put(f"{E}/displays/{d['id']}/view", json={"view": None})
+
 check(c.put(f"{E}/displays/{d['id']}/messages", json={"messages": False}).status_code == 200, "messages hidden on the screen")
 check(c.get(f"{API}/tv/state", headers=TV).json()["options"]["messages"] is False, "applied at once, without a view")
 

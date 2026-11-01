@@ -10,6 +10,7 @@ import esprima
 import pytest
 
 from sarcade.api import tv
+from sarcade import tv as tv_core
 
 # Accepted by esprima but newer than Chromium 56 (Tizen 4, 2018 TVs).
 FORBIDDEN = {
@@ -106,3 +107,11 @@ def test_tv_css_has_fallbacks_for_old_tv_browsers(name):
             before = rule[: m.start()]
             assert re.search(rf"(^|[;{{]){re.escape(prop)}:(?!(min|max|clamp)\()", before), \
                 f"{prop}: no fallback before min()/max()/clamp() (Chromium 79+): {rule[:120]}"
+
+
+def test_traces_options_and_drawing():
+    o = tv_core.clean_display_options({"layers": {"traces": True}, "traces_window": 360, "traces_ids": ["TEL-01", "TEL-01"]})
+    assert o["layers"]["traces"] is True and o["traces_window"] == 360 and o["traces_ids"] == ["TEL-01"]
+    assert tv_core.clean_display_options({})["layers"]["traces"] is False
+    assert tv_core.clean_display_options({"traces_window": 7, "traces_ids": ["A"]})["traces_window"] == 60
+    assert "function drawTraces()" in tv._TV and "weight:5" in tv._TV

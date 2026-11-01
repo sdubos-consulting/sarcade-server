@@ -13,7 +13,7 @@ import secrets
 import time
 import uuid
 from pathlib import Path
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse
@@ -173,6 +173,39 @@ def _stamp(*parts) -> str:
     return hashlib.sha1("|".join(str(p) for p in parts).encode()).hexdigest()[:16]
 
 
+_TRACES_CACHE: dict[tuple, tuple[float, list]] = {}
+
+
+def _traces(db: Session, event_id: str, opts: dict, shown: list[dict]) -> list[dict]:
+    """Traces the phone shows (« Traces » on: every operator shown;
+    otherwise the traces pinned one by one), last positions of the window,
+    at most 500 per device; read again at most once a minute."""
+    layers = opts["layers"]
+    ids = [p["device_id"] for p in shown] if layers.get("traces") else [i for i in opts.get("traces_ids", [])]
+    if not ids:
+        return []
+    window = opts.get("traces_window", 60)
+    key = (event_id, window, tuple(sorted(ids)))
+    hit = _TRACES_CACHE.get(key)
+    if hit and time.time() - hit[0] < 60:
+        return hit[1]
+    since = datetime.now(UTC) - timedelta(minutes=window)
+    ranked = select(PositionRow.id, func.row_number().over(
+        partition_by=PositionRow.device_id, order_by=PositionRow.time.desc()).label("rn")
+    ).where(PositionRow.event_id == event_id, PositionRow.device_id.in_(ids), PositionRow.time >= since).subquery()
+    rows = db.scalars(select(PositionRow).join(ranked, PositionRow.id == ranked.c.id)
+                      .where(ranked.c.rn <= tv.MAX_TRACE_POINTS).order_by(PositionRow.device_id, PositionRow.time)).all()
+    by: dict[str, dict] = {}
+    for r in rows:
+        t = by.setdefault(r.device_id, {"device_id": r.device_id, "aprs": r.source == "aprs", "points": []})
+        t["points"].append([round(r.lat, 6), round(r.lon, 6)])
+    out = [t for t in by.values() if len(t["points"]) > 1]
+    if len(_TRACES_CACHE) > 200:
+        _TRACES_CACHE.clear()
+    _TRACES_CACHE[key] = (time.time(), out)
+    return out
+
+
 def _map_layers(db: Session, event_id: str, opts: dict, fr: str | None, rr: str | None) -> dict:
     """Drawings, bearings and reference sites, sent again only when they
     changed since the revisions the TV already has (``fr``, ``rr``)."""
@@ -236,6 +269,8 @@ def state(request: Request, fr: str | None = Query(None, max_length=32), rr: str
                          drawings=layers.get("drawings"), bearings=layers.get("bearings"),
                          references=layers.get("references"))
     snap["features_rev"], snap["references_rev"] = layers["features_rev"], layers["references_rev"]
+    # Traces chosen on the phone (1 Nov 2026).
+    snap["traces"] = _traces(db, event.id, tv.display_options(view), snap["positions"])
     snap["view"] = view
     # « Messages : afficher / masquer » of this screen, applied at once.
     snap["options"] = {**snap["options"], "messages": d.get("messages", snap["options"]["messages"])}
@@ -719,7 +754,15 @@ map.invalidateSize({animate:false});}
 let identId='';
 function identify(i){if(!i||i.id===identId)return;identId=i.id;$('ident').textContent=i.name;$('ident').style.display='flex';
 setTimeout(()=>{$('ident').style.display='none';},(Number(i.seconds)||5)*1000);}
+// Traces as on aprs.fi and in the application (1 Nov 2026): thick line,
+// a dot per position received (zoomed in), operators cyan, APRS amber.
+let trL,tData=[],trOp=1;
+function drawTraces(){if(!trL)return;trL.clearLayers();const dots=map&&map.getZoom()>=13;
+for(const t of tData){const col=t.aprs?'#ffb020':'#3dd6f5';
+L.polyline(t.points,{color:col,weight:5,opacity:.8*trOp,lineCap:'round',lineJoin:'round',interactive:false}).addTo(trL);
+if(dots)for(const p of t.points)L.circleMarker(p,{radius:3,color:'#ffffff',weight:1,fillColor:'#b71c1c',fillOpacity:trOp,opacity:trOp,interactive:false}).addTo(trL);}}
 function layers(s){const o=(s.options&&s.options.opacity)||{},key=JSON.stringify(o);
+const tk=JSON.stringify(s.traces||[]);if(tk!==layers.tk||nz(o.traces,1)!==trOp){layers.tk=tk;tData=s.traces||[];trOp=nz(o.traces,1);drawTraces();}
 if(s.drawings)dData=s.drawings;if(s.bearings){bData=s.bearings;zData=s.zones||[];}if(s.references)rData=s.references;
 if(s.drawings||s.bearings||key!==lastOp){drawFeatures(nz(o.draw,1));drawBearings(nz(o.brg,1));}
 if(s.references||key!==lastOp)drawRefs(o);lastOp=key;fr=s.features_rev||'';rr=s.references_rev||'';
@@ -751,7 +794,8 @@ $('msgs').innerHTML=s.messages.slice(-14).reverse().map(m=>'<div class="m '+(m.p
 const a=s.alert;$('alert').style.display=a?'block':'none';if(a)$('alert').textContent=a.sender_id+' : '+a.body;
 const sos=s.sos||[];$('sos').style.display=sos.length?'inline-block':'none';$('sos').title='Détresse en cours : '+sos.join(', ');}
 function start(){$('pair').style.display='none';$('app').style.display='grid';map=L.map('map',{zoomControl:false}).setView([46.6,2.4],6);
-map.on('zoomend moveend',declutter);drawL=L.layerGroup().addTo(map);brgL=L.layerGroup().addTo(map);refL=L.layerGroup().addTo(map);
+map.on('zoomend moveend',declutter);trL=L.layerGroup().addTo(map);drawL=L.layerGroup().addTo(map);brgL=L.layerGroup().addTo(map);refL=L.layerGroup().addTo(map);
+map.on('zoomend',function(){drawTraces();});
 map.on('zoomend',()=>map.getContainer().classList.toggle('lowzoom',map.getZoom()<12));map.getContainer().classList.add('lowzoom');tick();setInterval(tick,1000);refresh();setInterval(refresh,10000);}
 if(token)start();else pair();
 </script></body></html>"""
