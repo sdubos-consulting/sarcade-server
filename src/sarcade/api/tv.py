@@ -561,12 +561,16 @@ h2{font-size:16px;color:var(--h2);text-transform:uppercase;letter-spacing:1px;ma
 .m{padding:6px 0;border-bottom:1px solid var(--line2)}.u{color:var(--amber)}.i{color:var(--red);font-weight:700}
 #wx{display:flex;align-items:center;font-size:28px;font-weight:700;color:var(--strong);margin-left:4px;white-space:nowrap}
 .vig{display:inline-block;width:12px;height:12px;border-radius:50%;margin-left:2px}.vig.orange{background:#ff8c1a}.vig.red{background:#ff4d5e}
-.ex{background:#ffb020;color:#03152b;font-weight:800;border-radius:4px;padding:0 5px;font-size:12px}
-.zlab span{display:inline-block;white-space:nowrap;background:var(--panel);color:var(--fg);border-left:4px solid;padding:2px 7px;font-size:14px;border-radius:4px}
+.ex{background:#ff9f1c;color:#14201a;font-weight:900;border-radius:4px;padding:0 5px;font-size:13px;margin-right:6px}
+/* Probable zone label (maquette validée le 1er novembre 2026): outside the
+   circle, opaque dark background, white text, coloured frame. */
+.zlab span{display:inline-block;white-space:nowrap;background:#08111c;color:#fff;border:2px solid;padding:4px 10px;font-size:20px;font-weight:600;border-radius:8px}
+.zlab small{font-size:15px;font-weight:400;color:#b8c6d6}
 #mapBox{position:relative;min-width:0;height:100%}
 #legend{display:none;position:absolute;left:10px;bottom:10px;z-index:900;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:15px;max-width:40%}
 #legend div{display:flex;align-items:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.6}
 #legend i{display:inline-block;width:22px;height:4px;border-radius:2px;flex:none}#legend .zr{width:14px;height:14px;border-radius:50%;background:rgba(255,77,94,.15);border:2px solid}
+#legend .zx{border-style:dashed;background:rgba(255,159,28,.12)}#legend .gx{height:0;border-top:3px dashed #9aa3ad;background:none}
 #from{display:none;position:absolute;right:10px;bottom:10px;z-index:900;background:var(--panel);color:var(--muted);font-size:13px;border-radius:6px;padding:2px 8px}
 .txt span{white-space:nowrap;font-size:16px;font-weight:700;text-shadow:0 0 3px var(--shadow)}
 .lowzoom .rlab{display:none}
@@ -693,15 +697,25 @@ if(cone>0)L.polygon([[b.lat,b.lon],dest(b.lat,b.lon,(b.azimuth_deg-cone+360)%360
 L.circleMarker([b.lat,b.lon],Object.assign({},st,{radius:4,fillOpacity:op})).addTo(brgL);L.polyline([[b.lat,b.lon],end],st).addTo(brgL);}
 // Probable zone and crossings of each search, computed by the server.
 for(const z of zData){const col=col6(z.color);for(const c of z.crossings||[])L.circleMarker(c,{radius:4,color:col,weight:1,opacity:op,fillOpacity:op}).addTo(brgL);
-if(z.lat==null)continue;L.circle([z.lat,z.lon],{radius:Number(z.radius_m)||50,color:'#ff4d5e',weight:2,opacity:op,fillColor:'#ff4d5e',fillOpacity:.13*op,interactive:false}).addTo(brgL);
-L.marker([z.lat,z.lon],{interactive:false,icon:L.divIcon({className:'zlab',iconSize:null,iconAnchor:[-10,12],
-html:'<span style="border-color:'+col+';opacity:'+op+'">'+(z.exercise?'<span class="ex">EXERCICE</span> ':'')+esc(z.label)+'</span>'})}).addTo(brgL);}
+if(z.lat==null)continue;
+// Exercise: orange dashed contour; real search: red solid (1 Nov 2026).
+const zc=z.exercise?'#ff9f1c':'#ff4d5e',r=Number(z.radius_m)||50;
+L.circle([z.lat,z.lon],{radius:r,color:zc,weight:z.exercise?4:3,dashArray:z.exercise?'14 9':null,opacity:op,fillColor:zc,fillOpacity:.13*op,interactive:false}).addTo(brgL);
+// Label outside the circle, linked to its edge by a short line.
+const edge=dest(z.lat,z.lon,60,r),tip=dest(z.lat,z.lon,60,r*1.35+150);
+L.polyline([edge,tip],{color:zc,weight:2,opacity:op,interactive:false}).addTo(brgL);
+const parts=String(z.label||'').split(' · '),main=esc(parts.slice(0,2).join(' · ')),rest=parts.length>2?' <small>· '+esc(parts.slice(2).join(' · '))+'</small>':'';
+L.marker(tip,{interactive:false,icon:L.divIcon({className:'zlab',iconSize:null,iconAnchor:[0,18],
+html:'<span style="border-color:'+zc+';opacity:'+op+'">'+(z.exercise?'<span class="ex">EX</span>':'')+main+rest+'</span>'})}).addTo(brgL);}
 legend();}
 // Legend bottom left, always visible while bearings are shown.
 function legend(){const by={};for(const b of bData){const k=b.search||'';by[k]=by[k]||{color:col6(b.color),ex:false};by[k].ex=by[k].ex||b.exercise;}
 const keys=Object.keys(by).sort();const zone=zData.some(z=>z.lat!=null);
-$('legend').innerHTML=keys.map(k=>'<div><i style="background:'+by[k].color+'"></i>'+esc(k||'Sans signal')+(by[k].ex?' <span class="ex">EXERCICE</span>':'')+'</div>').join('')
-+(zone?'<div><i class="zr" style="border-color:#ff4d5e"></i>Zone probable</div>':'');$('legend').style.display=keys.length?'block':'none';}
+const real=zData.some(z=>z.lat!=null&&!z.exercise),exo=zData.some(z=>z.lat!=null&&z.exercise),out=zData.some(z=>(z.excluded||[]).length);
+$('legend').innerHTML=keys.map(k=>'<div><i style="background:'+by[k].color+'"></i>'+(by[k].ex?'<span class="ex">EX</span>':'')+esc(k||'Sans signal')+'</div>').join('')
++(real?'<div><i class="zr" style="border-color:#ff4d5e"></i>Zone probable (recherche réelle)</div>':'')
++(exo?'<div><i class="zr zx" style="border-color:#ff9f1c"></i>Zone d’exercice</div>':'')
++(out?'<div><i class="gx"></i>Relevé écarté</div>':'');$('legend').style.display=keys.length?'block':'none';}
 function drawRefs(o){refL.clearLayers();for(const r of rData){const hp=r.category==='HIGH_POINT',c=hp?'#7ddc5a':'#c77dff',op=nz(hp?o.high:o.relay,o.ref,1);
 L.circleMarker([r.lat,r.lon],{radius:5,color:c,weight:2,opacity:op,fillOpacity:op*0.6})
 .bindTooltip(esc(r.callsign||r.name),{permanent:true,direction:'right',className:'rlab'}).addTo(refL);}}

@@ -106,3 +106,12 @@ def test_tv_css_has_fallbacks_for_old_tv_browsers(name):
             before = rule[: m.start()]
             assert re.search(rf"(^|[;{{]){re.escape(prop)}:(?!(min|max|clamp)\()", before), \
                 f"{prop}: no fallback before min()/max()/clamp() (Chromium 79+): {rule[:120]}"
+
+
+def test_exercise_zone_signage():
+    """Maquette validée (1 Nov 2026): orange dashed exercise zone, label
+    outside the circle with « EX », legend of the three symbols."""
+    page = tv._TV
+    assert "dashArray:z.exercise?'14 9':null" in page and '<span class="ex">EX</span>' in page
+    assert "EXERCICE" not in page
+    assert "Zone d’exercice" in page and "Relevé écarté" in page
