@@ -133,8 +133,17 @@ def tv_state(event, display: dict, options: dict) -> dict:
         watch(event.id, f"tv:{display['id']}", (lat - dlat, lon - dlon, lat + dlat, lon + dlon))
     from sarcade import tv as tv_core
     latest = runtime.latest.get(event.id) or {}
-    shown = [a for a in latest.get("aircraft") or [] if tv_core.aircraft_shown(a, options)]
-    return {"aircraft": shown, "aircraft_time": latest.get("time")}
+    # No trace on the TV (1 Nov 2026, 11 h 34): the short trail is dropped;
+    # the route (30 min) of each aircraft followed in the application that
+    # sent the view only.
+    shown = [{k: v for k, v in a.items() if k != "trail"}
+             for a in latest.get("aircraft") or [] if tv_core.aircraft_shown(a, options)]
+    present = {a["icao24"] for a in shown}
+    tracks = {i: track(event.id, i) for i in options.get("aircraft_followed") or [] if i in present}
+    # Server clock: the TV estimates the positions from the same reference
+    # time as the application (time of the OpenSky position).
+    return {"aircraft": shown, "aircraft_time": latest.get("time"), "aircraft_now": round(time.time(), 1),
+            "aircraft_tracks": {i: t for i, t in tracks.items() if len(t) > 1}}
 
 
 def new_emergencies(event_id: str, aircraft: list[dict]) -> list[dict]:
@@ -185,7 +194,7 @@ async def poll_once(client: opensky.OpenSkyClient) -> None:
         data = {"time": datetime.now(UTC).isoformat().replace("+00:00", "Z"), "aircraft": aircraft}
         runtime.latest[event_id] = data
         runtime.connected, runtime.detail, runtime.last_ok_at = True, "", datetime.now(UTC)
-        await manager.broadcast(event_id, {"type": "adsb.updated", "data": data})
+        await manager.broadcast(event_id, {"type": "adsb.updated", "data": {**data, "now": round(time.time(), 1)}})
         found = new_emergencies(event_id, aircraft)
         if found:
             await asyncio.to_thread(_log_emergencies, event_id, found)

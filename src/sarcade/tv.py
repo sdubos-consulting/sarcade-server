@@ -315,7 +315,20 @@ MAX_TRACE_POINTS = 500
 # Aircraft (ADS-B, module ADRASEC) pushed with the view (1 Nov 2026): the
 # filters of the application; no ADS-B setting of its own on the TV.
 ALTITUDE_MAX_FT = 60_000
-AIRCRAFT_DEFAULTS = {"aircraft_min_ft": 0, "aircraft_max_ft": None, "aircraft_ground": False, "aircraft_labels": False}
+# Three altitude bands (cards « liste des aéronefs en volets » and « seuils
+# de couleur réglables », 1 Nov 2026, 11 h 38): two thresholds (500 ft
+# steps, 0 to 45 000 ft) cut 0 → ∞ into Bas, Moyen and Haut, each shown or
+# not; by default 3 000 and 10 000 ft, Bas and Moyen shown (the former
+# 0 → 10 000 ft filter of #181, replaced). Aircraft followed in the
+# application (icao24): their route is shown by the TV.
+THRESHOLD_MAX_FT = 45_000
+THRESHOLD_STEP_FT = 500
+BANDS = ("low", "mid", "high")
+MAX_FOLLOWED = 20
+AIRCRAFT_DEFAULTS = {"aircraft_low_ft": 3000, "aircraft_high_ft": 10000,
+                     "aircraft_bands": {"low": True, "mid": True, "high": False},
+                     "aircraft_ground": False, "aircraft_labels": False, "aircraft_followed": []}
+_ICAO24 = re.compile(r"^[0-9a-f]{6}$")
 # One opacity per layer (card « Panneau des couches, opacité incohérente »,
 # 30 Oct 2026): APRS, high points and relays apart; a view of the former
 # format (ops, draw, brg, ref) gives its group value to the new keys.
@@ -373,32 +386,69 @@ def clean_display_options(view: dict) -> dict:
     return out
 
 
+def _feet(v) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
 def clean_aircraft_filters(view: dict) -> dict:
-    """Altitude range (« max » None = no ceiling), aircraft on the ground,
-    callsigns; out-of-range values fall back to the defaults."""
-    out = dict(AIRCRAFT_DEFAULTS)
-    lo, hi = view.get("aircraft_min_ft", 0), view.get("aircraft_max_ft")
-    if isinstance(lo, int) and not isinstance(lo, bool) and 0 <= lo <= ALTITUDE_MAX_FT:
-        out["aircraft_min_ft"] = lo
-    if hi is None or (isinstance(hi, int) and not isinstance(hi, bool) and out["aircraft_min_ft"] <= hi <= ALTITUDE_MAX_FT):
-        out["aircraft_max_ft"] = hi
+    """Thresholds of the three bands, bands shown, aircraft on the ground,
+    callsigns, aircraft followed; out-of-range values fall back to the
+    defaults. A view of #181 (``aircraft_min_ft`` / ``aircraft_max_ft``,
+    without bands) is converted: a band is shown if it meets the range."""
+    out = {**AIRCRAFT_DEFAULTS, "aircraft_bands": dict(AIRCRAFT_DEFAULTS["aircraft_bands"])}
+    lo, hi = view.get("aircraft_low_ft"), view.get("aircraft_high_ft")
+    if _feet(lo) and _feet(hi) and 0 <= lo <= hi <= THRESHOLD_MAX_FT:
+        out["aircraft_low_ft"], out["aircraft_high_ft"] = lo, hi
+    bands = view.get("aircraft_bands")
+    if isinstance(bands, dict):
+        for key in BANDS:
+            if isinstance(bands.get(key), bool):
+                out["aircraft_bands"][key] = bands[key]
+    elif "aircraft_min_ft" in view or "aircraft_max_ft" in view:
+        out["aircraft_bands"] = legacy_bands(view.get("aircraft_min_ft", 0), view.get("aircraft_max_ft"),
+                                             out["aircraft_low_ft"], out["aircraft_high_ft"])
     for key in ("aircraft_ground", "aircraft_labels"):
         if isinstance(view.get(key), bool):
             out[key] = view[key]
+    followed = view.get("aircraft_followed")
+    if isinstance(followed, list):
+        ids = [x.lower() for x in followed if isinstance(x, str) and _ICAO24.match(x.lower())]
+        out["aircraft_followed"] = list(dict.fromkeys(ids))[:MAX_FOLLOWED]
     return out
 
 
+def legacy_bands(lo, hi, low_ft: int, high_ft: int) -> dict:
+    """Bands of a view sent before the bands (#181: range ``lo`` → ``hi``,
+    ``hi`` None = ∞): 0 → 10 000 ft gives Bas and Moyen, 0 → ∞ all three."""
+    lo = lo if _feet(lo) and 0 <= lo <= ALTITUDE_MAX_FT else 0
+    hi = hi if _feet(hi) and lo <= hi <= ALTITUDE_MAX_FT else None
+    return {"low": lo <= low_ft,
+            "mid": lo <= high_ft and (hi is None or hi > low_ft),
+            "high": hi is None or hi > high_ft}
+
+
+def aircraft_band(a: dict, opts: dict) -> str:
+    """« low », « mid », « high », or « ground » (on the ground or altitude
+    unknown, grey); the upper threshold belongs to the lower band."""
+    alt = a.get("alt_ft")
+    if a.get("on_ground") or alt is None:
+        return "ground"
+    low = opts.get("aircraft_low_ft", AIRCRAFT_DEFAULTS["aircraft_low_ft"])
+    high = opts.get("aircraft_high_ft", AIRCRAFT_DEFAULTS["aircraft_high_ft"])
+    return "low" if alt <= low else ("mid" if alt <= high else "high")
+
+
 def aircraft_shown(a: dict, opts: dict) -> bool:
-    """Filters of the application: an emergency squawk is always shown."""
-    if a.get("emergency"):
+    """Filters of the application: an emergency squawk and an aircraft
+    followed are always shown; an aircraft without altitude follows Bas."""
+    if a.get("emergency") or a.get("icao24") in (opts.get("aircraft_followed") or ()):
         return True
     if a.get("on_ground"):
         return bool(opts.get("aircraft_ground"))
-    alt = a.get("alt_ft")
-    lo, hi = opts.get("aircraft_min_ft") or 0, opts.get("aircraft_max_ft")
-    if alt is None:
-        return lo == 0
-    return alt >= lo and (hi is None or alt <= hi)
+    bands = opts.get("aircraft_bands") or AIRCRAFT_DEFAULTS["aircraft_bands"]
+    if a.get("alt_ft") is None:
+        return bool(bands.get("low"))
+    return bool(bands.get(aircraft_band(a, opts)))
 
 
 def display_options(view: dict | None) -> dict:

@@ -84,9 +84,14 @@ def parse_states(payload: dict) -> list[dict]:
             "vertical_rate_mps": None if s[11] is None else round(float(s[11]), 1),
             "squawk": squawk,
             "emergency": EMERGENCY_SQUAWKS.get(squawk or ""),
-            # OpenSky category 8 = rotorcraft (helicopter icon).
+            # OpenSky category (0 or 1: not transmitted; 8 = rotorcraft): icon
+            # by type in the applications and on the TV (1 Nov 2026, 12 h 04).
+            "category": category if isinstance(category, int) and not isinstance(category, bool) else None,
             "rotorcraft": category == 8,
             "last_contact": s[4],
+            # Time of the position itself (OpenSky reception), the reference
+            # of the estimated position on both screens (1 Nov 2026, 11 h 55).
+            "position_time": s[3] if isinstance(s[3], (int, float)) and not isinstance(s[3], bool) else s[4],
         })
     return out
 
