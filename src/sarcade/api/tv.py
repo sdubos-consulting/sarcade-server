@@ -623,12 +623,12 @@ color:#ffb020;border-left:8px solid #ff4d1a;padding-left:3vw;line-height:1}
 #qr{background:#fff;padding:22px;border-radius:24px;box-shadow:0 12px 40px rgba(0,0,0,.35)}#qr img,#qr canvas{display:block}
 #hint{font-size:18px;color:#ffb020;min-height:1em}
 /* Old TV browsers: no gap in flex layouts (Chromium < 84), margins instead. */
-header>*+*{margin-left:22px}.stats>*+*{margin-left:26px}#wx>*+*{margin-left:6px}#legend div>*+*{margin-left:7px}
+header>*+*{margin-left:28px}.stats>*+*{margin-left:28px}#wx>*+*{margin-left:6px}#legend div>*+*{margin-left:7px}
 @media (max-aspect-ratio:1/1){#pair{grid-template-columns:1fr;justify-items:center;text-align:center;padding:6vh 6vw;align-content:center}
 .left{align-items:center}#code{border-left:0;padding-left:0}}
 /* Day / night of the page (« Envoyer ma vue » pushes the mode of the phone, 30 Oct 2026). */
-#app{--bg:#03152b;--fg:#eef3f9;--strong:#fff;--muted:#c4d1e0;--h2:#b9c6d2;--line:#1e2c38;--line2:#16212b;--panel:rgba(3,21,43,.88);--amber:#ffb020;--red:#ff4d5e;--ok:#3ddc84;--shadow:#000}
-#app.day{--bg:#f4f7fb;--fg:#0b1a2b;--strong:#000;--muted:#2c3e52;--h2:#33475c;--line:#b9c6d2;--line2:#d5dee8;--panel:rgba(255,255,255,.94);--amber:#8a4b00;--red:#b3141f;--ok:#137a3a;--shadow:#fff}
+#app{--sep:rgba(185,198,210,.35);--bg:#03152b;--fg:#eef3f9;--strong:#fff;--muted:#c4d1e0;--h2:#b9c6d2;--line:#1e2c38;--line2:#16212b;--panel:rgba(3,21,43,.88);--amber:#ffb020;--red:#ff4d5e;--ok:#3ddc84;--shadow:#000}
+#app.day{--sep:rgba(44,62,82,.3);--bg:#f4f7fb;--fg:#0b1a2b;--strong:#000;--muted:#2c3e52;--h2:#33475c;--line:#b9c6d2;--line2:#d5dee8;--panel:rgba(255,255,255,.94);--amber:#8a4b00;--red:#b3141f;--ok:#137a3a;--shadow:#fff}
 #app{display:none;height:100%;grid-template-columns:1fr minmax(300px,17%);grid-template-rows:68px 1fr;background:var(--bg);color:var(--fg)}
 #app.nomsg{grid-template-columns:1fr}#app.nomsg aside{display:none}
 .night .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.95) contrast(.9) saturate(.6)}
@@ -637,12 +637,16 @@ header{grid-column:1/-1;display:flex;align-items:center;padding:0 20px 0 10px;ba
 #title{font-size:26px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .stats{display:flex;align-items:center;margin-left:auto;font-size:19px;color:var(--muted);white-space:nowrap;min-width:0;overflow:hidden}.stats b{color:var(--strong);font-size:22px}
 .dot{display:inline-block;width:11px;height:11px;border-radius:50%;background:var(--ok);margin-right:7px}#link.lost{color:var(--red)}#link.lost .dot{background:var(--red)}
-#clock{font-size:34px;font-weight:700;font-variant-numeric:tabular-nums;margin-left:10px;color:var(--strong)}
+#clock{font-size:34px;line-height:36px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--strong)}
 #sun{font-size:17px;color:var(--muted);line-height:1.25;font-variant-numeric:tabular-nums}#sun b{color:var(--amber);font-weight:700}
 #map{height:100%;min-width:0}aside{overflow:hidden;padding:12px 14px;border-left:1px solid var(--line);font-size:17px;min-width:0;overflow-wrap:anywhere;word-wrap:break-word}
 h2{font-size:16px;color:var(--h2);text-transform:uppercase;letter-spacing:1px;margin:14px 0 6px}
 .m{padding:6px 0;border-bottom:1px solid var(--line2)}.u{color:var(--amber)}.i{color:var(--red);font-weight:700}
-#wx{display:flex;align-items:center;font-size:28px;font-weight:700;color:var(--strong);margin-left:4px;white-space:nowrap}
+#wx{display:flex;align-items:center;height:36px;font-size:28px;font-weight:700;color:var(--strong);white-space:nowrap}#wx:empty{display:none}
+/* Top bar (lot 19): the same 28 px between every element, and a thin grey
+   line in the middle of the space between the link and the weather, and
+   between the weather and the clock. */
+#wx,#clock{margin-left:14px;padding-left:14px;border-left:1px solid var(--sep)}
 .vig{display:inline-block;width:12px;height:12px;border-radius:50%;margin-left:2px}.vig.orange{background:#ff8c1a}.vig.red{background:#ff4d5e}
 .ex{background:#ff9f1c;color:#14201a;font-weight:900;border-radius:4px;padding:0 5px;font-size:13px;margin-right:6px}
 /* Probable zone label (maquette validée le 1er novembre 2026): outside the
@@ -656,9 +660,13 @@ h2{font-size:16px;color:var(--h2);text-transform:uppercase;letter-spacing:1px;ma
 #legend i{display:inline-block;width:22px;height:4px;border-radius:2px;flex:none}#legend .zr{width:14px;height:14px;border-radius:50%;background:rgba(255,77,94,.15);border:2px solid}
 #legend .zx{border-style:dashed;background:rgba(255,159,28,.12)}#legend .gx{height:0;border-top:3px dashed #9aa3ad;background:none}
 /* Distance scale (lot 18): metric only, bottom left just above the legend
-   (placeScale), readable from afar: thick line, 15 px, dark background. */
-#map .leaflet-control-scale{margin:0 0 0 10px}
-#map .leaflet-control-scale-line{border:4px solid #fff;border-top:0;color:#fff;background:rgba(3,21,43,.88);font-size:15px;font-weight:700;line-height:1.35;padding:2px 8px 1px;text-shadow:none}
+   (placeScale). Lot 19: drawn as in the web application (white rounded
+   label, dark text above a thin black line with a small square end at each
+   side), enlarged for reading from afar (15 px instead of 11 px, proportions
+   kept), the same in day and night. */
+#map .leaflet-control-scale{margin:0 0 0 10px;background:rgba(255,255,255,.95);border-radius:8px;padding:3px 8px 5px}
+#map .leaflet-control-scale-line{position:relative;border:0;background:none;color:#1f1f1f;font-size:15px;font-weight:600;line-height:1.25;padding:0 0 11px;text-shadow:none}
+#map .leaflet-control-scale-line:after{content:'';position:absolute;left:0;right:0;bottom:0;height:8px;border:3px solid #1f1f1f;border-top:0;box-sizing:border-box}
 #acAlert{display:none;position:absolute;left:50%;top:10px;-webkit-transform:translateX(-50%);transform:translateX(-50%);z-index:950;background:#ff4d5e;color:#fff;font-weight:800;font-size:18px;border-radius:8px;padding:6px 14px;white-space:nowrap}
 .ac svg{display:block}.acl{position:absolute;white-space:nowrap;font-size:13px;font-weight:700;background:rgba(8,17,28,.85);padding:1px 6px;border-radius:4px}
 #acLeg{display:none;position:absolute;left:10px;top:10px;z-index:900;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:5px 10px;font-size:14px}
@@ -667,6 +675,11 @@ h2{font-size:16px;color:var(--h2);text-transform:uppercase;letter-spacing:1px;ma
    always stacked above the OpenStreetMap mention, never under it. */
 #map #from{display:none;margin:0 10px 6px 0;background:#08111c;color:#fff;font-size:15px;font-weight:600;line-height:1.4;border-radius:6px;padding:3px 10px}
 .aprd svg{display:block}
+/* Station labels (lot 19, style A): rounded dark pill as the legend, white
+   bold text, thin frame of the station colour; light pill in day mode. */
+.leaflet-tooltip.stl{background:rgba(3,21,43,.82);color:#fff;font-size:14px;font-weight:700;line-height:1.3;border:1.5px solid;border-radius:7px;padding:1px 7px;box-shadow:0 1px 3px rgba(0,0,0,.35)}
+.leaflet-tooltip.stl:before{display:none}.leaflet-tooltip.stl.op{border-color:#3dd6f5}.leaflet-tooltip.stl.ap{border-color:#ffb020}
+#app.day .leaflet-tooltip.stl{background:rgba(255,255,255,.88);color:#0b1a2b;box-shadow:0 1px 3px rgba(0,0,0,.2)}
 .txt span{white-space:nowrap;font-size:16px;font-weight:700;text-shadow:0 0 3px var(--shadow)}
 .lowzoom .rlab{display:none}
 #sos{display:none;background:#ff4d5e;color:#fff;font-weight:800;font-size:16px;border-radius:999px;padding:3px 10px;animation:blink 1.2s steps(2,start) infinite}
@@ -725,12 +738,17 @@ function nz(){for(var i=0;i<arguments.length;i++){var v=arguments[i];if(v!==null
 const esc=v=>String(nz(v,'')).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 // Station name without the technical prefix: callsign for APRS, else the terminal.
 function label(p){return p.callsign||String(p.device_id||'').replace(/^aprs:/,'');}
-// Labels that would overlap are hidden (operators first, then APRS), recomputed on zoom.
+// Labels that would touch (lot 19): the next one is shifted down or up by
+// one line, hidden only when no place is left (operators first, then APRS);
+// width estimated from the text, no layout read per station; recomputed on zoom.
+const LBL_H=24;
 function declutter(){if(!map)return;const kept=[];
 const ms=Object.values(markers).sort((a,b)=>(a._aprs?1:0)-(b._aprs?1:0));
-for(const m of ms){const pt=map.latLngToContainerPoint(m.getLatLng());
-const clash=kept.some(q=>Math.abs(q.x-pt.x)<110&&Math.abs(q.y-pt.y)<22);
-if(clash)m.closeTooltip();else{m.openTooltip();kept.push(pt);}}}
+for(const m of ms){const pt=map.latLngToContainerPoint(m.getLatLng()),x=pt.x+10,w=18+8.5*String(m._lbl||'').length;let dy=null;
+for(const d of [0,LBL_H,-LBL_H]){const y=pt.y+d;if(!kept.some(q=>q.x<x+w&&x<q.x+q.w&&Math.abs(q.y-y)<LBL_H)){dy=d;break;}}
+if(dy===null){m.closeTooltip();continue;}kept.push({x:x,y:pt.y+dy,w:w});
+const t=m.getTooltip(),moved=t&&t._dy!==dy;if(moved){t._dy=dy;t.options.offset=L.point(0,dy);}
+m.openTooltip();if(moved&&t.isOpen())t.update();}}
 // APRS gateways in a diamond (lot 19, decision of 1 Nov 2026, 22 h 13):
 // symbol « ?& » with an overlay letter or digit, or a table « / » « \\ »;
 // red for LoRa (L&), black for the others (I&, R&, &…), white overlay letter
@@ -798,7 +816,8 @@ else if(f.kind==='rectangle'&&pts.length>1)l=L.rectangle([pts[0],pts[1]],st);
 else if(f.kind==='zone')l=L.polygon(pts,st);
 else if(f.kind==='arrow'&&pts.length>1)l=L.featureGroup([L.polyline(pts,st),L.polyline(arrowHead(pts),st)]);
 else l=L.polyline(pts,st);
-if(f.label&&f.kind!=='text')l.bindTooltip(esc(f.label),{permanent:true,direction:'center'});l.addTo(drawL);}}
+// Label of a drawing: the opacity of the drawing, never more (lot 19).
+if(f.label&&f.kind!=='text')l.bindTooltip(esc(f.label),{permanent:true,direction:'center',opacity:o});l.addTo(drawL);}}
 function dest(lat,lon,az,m){const d=m/6371000,t=az*Math.PI/180,p1=lat*Math.PI/180,l1=lon*Math.PI/180;
 const p2=Math.asin(Math.sin(p1)*Math.cos(d)+Math.cos(p1)*Math.sin(d)*Math.cos(t));
 return[p2*180/Math.PI,(l1+Math.atan2(Math.sin(t)*Math.sin(d)*Math.cos(p1),Math.cos(d)-Math.sin(p1)*Math.sin(p2)))*180/Math.PI];}
@@ -845,7 +864,7 @@ function placeScale(){const c=map&&map.getContainer().querySelector('.leaflet-bo
 c.style.bottom=(lg.style.display==='block'?10+lg.offsetHeight+6:10)+'px';}
 function drawRefs(o){refL.clearLayers();for(const r of rData){const hp=r.category==='HIGH_POINT',c=hp?'#7ddc5a':'#c77dff',op=nz(hp?o.high:o.relay,o.ref,1);
 L.circleMarker([r.lat,r.lon],{radius:5,color:c,weight:2,opacity:op,fillOpacity:op*0.6})
-.bindTooltip(esc(r.callsign||r.name),{permanent:true,direction:'right',className:'rlab'}).addTo(refL);}}
+.bindTooltip(esc(r.callsign||r.name),{permanent:true,direction:'right',className:'rlab',opacity:op}).addTo(refL);}}
 // Day / night chosen by the server (mode pushed with the view, else sunrise
 // and sunset); in night the plan tiles are darkened as in the application
 // (not the photos). Messages hidden: the column leaves, the map takes the
@@ -945,8 +964,9 @@ const tk=JSON.stringify(s.traces||[]);if(tk!==layers.tk||nz(o.traces,1)!==trOp){
 if(s.drawings)dData=s.drawings;if(s.bearings){bData=s.bearings;zData=s.zones||[];}if(s.references)rData=s.references;
 if(s.drawings||s.bearings||key!==lastOp){drawFeatures(nz(o.draw,1));drawBearings(nz(o.brg,1));}
 if(s.references||key!==lastOp)drawRefs(o);lastOp=key;fr=s.features_rev||'';rr=s.references_rev||'';
-// One opacity per layer: operators and APRS apart.
-for(const m of Object.values(markers)){const op=nz(m._aprs?o.aprs:o.ops,o.ops,1);if(m.setStyle){m.setStyle({opacity:op,fillOpacity:.9*op});m.bringToFront();}else m.setOpacity(op);}
+// One opacity per layer: operators and APRS apart; the label follows the
+// opacity of its layer, never more opaque than the drawing (lot 19).
+for(const m of Object.values(markers)){const op=nz(m._aprs?o.aprs:o.ops,o.ops,1),t=m.getTooltip();if(m.setStyle){m.setStyle({opacity:op,fillOpacity:.9*op});m.bringToFront();}else m.setOpacity(op);if(t)t.setOpacity(op);}
 look(s);}
 // SOS on the map (lot 17): one halo per open distress, at the last known
 // position sent by the server whatever the layers; the view of the TV never
@@ -984,9 +1004,11 @@ const active=s.positions.filter(p=>p.source!=='aprs'&&now-new Date(p.time)<10*60
 $('nOps').textContent=s.positions.filter(p=>p.source!=='aprs'&&now-new Date(p.time)<10*60000).length;
 $('nAprs').textContent=s.positions.filter(p=>p.source==='aprs').length;
 for(const p of s.positions){const ll=[p.lat,p.lon];pts.push(ll);const k=p.device_id;const aprs=p.source==='aprs';
+// Round of the station framed in white, label in a pill (lot 19, style A);
+// APRS gateways in a diamond.
 const gw=aprs?gateway(p.aprs_symbol):null;if(markers[k]&&markers[k]._gw!==gw){map.removeLayer(markers[k]);delete markers[k];}
-if(!markers[k]){markers[k]=(gw!==null?L.marker(ll,{icon:gwIcon(gw),keyboard:false}):L.circleMarker(ll,{radius:aprs?6:8,color:aprs?'#ffb020':'#3dd6f5',fillOpacity:.9}))
-.bindTooltip(esc(label(p)),{permanent:true,direction:'right'}).addTo(map);markers[k]._aprs=aprs;markers[k]._gw=gw;}else markers[k].setLatLng(ll);}
+if(!markers[k]){markers[k]=(gw!==null?L.marker(ll,{icon:gwIcon(gw),keyboard:false}):L.circleMarker(ll,{radius:aprs?6:8,color:'#fff',weight:2,fillColor:aprs?'#ffb020':'#3dd6f5',fillOpacity:.9}))
+.bindTooltip(esc(label(p)),{permanent:true,direction:'right',className:'stl '+(aprs?'ap':'op')}).addTo(map);markers[k]._aprs=aprs;markers[k]._gw=gw;markers[k]._lbl=label(p);}else markers[k].setLatLng(ll);}
 // Stations no longer shown (hidden layer) leave the map.
 const keep=new Set(s.positions.map(p=>p.device_id));for(const k of Object.keys(markers))if(!keep.has(k)){map.removeLayer(markers[k]);delete markers[k];}
 layers(s);weather(s.weather);identify(s.identify);

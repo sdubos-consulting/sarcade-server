@@ -34,8 +34,24 @@ def test_scale_always_above_the_legend():
     assert "left:10px" in legend and "bottom:10px" in legend
 
 
-def test_scale_readable_from_afar():
-    line = _rule(tv._TV, "#map .leaflet-control-scale-line")
-    assert "font-size:15px" in line and "color:#fff" in line
-    assert re.search(r"border:[34]px solid", line)
-    assert "background:rgba(3,21,43,.88)" in line  # dark, semi-opaque, as the legend at night
+def test_scale_drawn_as_the_web_application():
+    """Lot 19, card « TV : échelle au même style que l'application web »
+    (choix 1 à 4): white rounded label, dark text, thin black line with a
+    small square end at each side (``_scaleBar`` of the application:
+    0xF2FFFFFF background, 0xFF1F1F1F ink, radius 6, 11 px text, 2 px line,
+    6 px ends), enlarged to 15 px with the same proportions."""
+    page = tv._TV
+    box = _rule(page, "#map .leaflet-control-scale")
+    assert "background:rgba(255,255,255,.95)" in box and "border-radius:8px" in box
+    line = _rule(page, "#map .leaflet-control-scale-line")
+    assert "font-size:15px" in line and "color:#1f1f1f" in line
+    assert "border:0" in line and "background:none" in line  # text above the line, as on the web
+    ends = _rule(page, "#map .leaflet-control-scale-line:after")
+    assert "border:3px solid #1f1f1f" in ends and "border-top:0" in ends and "height:8px" in ends
+    # Former TV style gone (dark background, thick white line).
+    assert "border:4px solid #fff" not in page
+
+
+def test_scale_same_in_day_and_night():
+    page = tv._TV
+    assert not re.search(r"\.(day|night)[^{}]*leaflet-control-scale", page)
