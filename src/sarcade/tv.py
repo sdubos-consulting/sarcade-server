@@ -10,6 +10,7 @@ import math
 import re
 import secrets
 import time
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
@@ -399,6 +400,32 @@ def tv_drawing(feature: dict) -> dict:
     """Map feature as drawn by the TV (no author, no history)."""
     keep = ("id", "kind", "points", "radius_m", "color", "stroke_width", "label", "opacity")
     return {k: feature.get(k) for k in keep if feature.get(k) is not None}
+
+
+def search_key(search: str | None) -> str:
+    """Key of a searched signal: « Balise d'exercice » and « Balise d’exercice »
+    are the same search (1 Nov 2026: the TV showed two legends and two zones
+    after the typographic apostrophe of #77). Apostrophes and quotes unified,
+    accents and case ignored, spaces reduced. Same rule as `searchKey` of the
+    application."""
+    text = unicodedata.normalize("NFKD", search or "")
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    text = re.sub(r"[\u2018\u2019\u02bc\u0060\u00b4]", "'", text)
+    text = re.sub(r"[\u201c\u201d\u00ab\u00bb]", '"', text)
+    return " ".join(text.lower().split())
+
+
+def unify_searches(bearings: list[dict]) -> list[dict]:
+    """One search per key, named after its most recent bearing (the list is
+    in creation order), with the colour of that name."""
+    latest: dict[str, str] = {}
+    for b in bearings:
+        latest[search_key(b.get("search"))] = b.get("search") or ""
+    out = []
+    for b in bearings:
+        name = latest[search_key(b.get("search"))]
+        out.append(b if b.get("search") == name else {**b, "search": name, "color": search_color(name)})
+    return out
 
 
 def tv_bearing(feature: dict) -> dict | None:

@@ -195,7 +195,7 @@ def _map_layers(db: Session, event_id: str, opts: dict, fr: str | None, rr: str 
                         bearings.append(b)
                 else:
                     drawings.append(tv.tv_drawing(f))
-        out["drawings"], out["bearings"] = drawings, bearings
+        out["drawings"], out["bearings"] = drawings, tv.unify_searches(bearings)
     cats = [c for c, on in (("HIGH_POINT", layers["highpoints"]), ("RELAY", layers["relays"])) if on]
     count, last = (db.execute(select(func.count(), func.max(ReferenceSiteRow.imported_at))
                               .where(ReferenceSiteRow.status == "active", ReferenceSiteRow.category.in_(cats))).one()
