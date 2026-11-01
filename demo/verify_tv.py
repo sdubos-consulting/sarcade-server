@@ -113,6 +113,11 @@ check(c.get(f"{API}/tv/state", headers=TV2).json()["night"] is True, "night mode
 check(c.put(f"{E}/displays/{d2['id']}/view", json={"view": {"lat": 48.8, "lon": 2.1, "zoom": 12, "theme": "x"}}).status_code == 422,
       "unknown mode refused")
 print("TV lot 7 verified")
+# Lot 18: metric distance scale above the legend.
+page = c.get(f"{BASE}/tv").text
+check("L.control.scale({imperial:false" in page and "function placeScale()" in page, "TV page: metric scale above the legend")
+print("TV lot 18 (scale) verified")
+
 
 # Lot 11: « Écrans » button of the map (mine) and « Suivre ma vue » (live).
 check("mine" in c.get(f"{E}/displays").json()[0], "screens say whether they are mine")
