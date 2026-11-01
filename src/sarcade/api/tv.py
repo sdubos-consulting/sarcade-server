@@ -266,7 +266,11 @@ def state(request: Request, fr: str | None = Query(None, max_length=32), rr: str
     msgs = db.scalars(select(MessageRow).where(MessageRow.event_id == event.id)
                       .order_by(MessageRow.created_at.desc()).limit(60)).all()
     snap = tv.snapshot({"id": event.id, "name": event.name}, positions, [_msg(m) for m in reversed(msgs)])
-    snap.update(_alert(db, event.id, d))
+    alert_msgs = _alert_messages(db, event.id)
+    snap.update(_alert(db, event.id, d, alert_msgs))
+    # SOS on the map (lot 17): every open distress with the last known
+    # position, before the layers of the view (never hidden by a filter).
+    snap["distress"] = tv.distress_marks(alert_msgs, positions, datetime.now(UTC))
     view = d.get("view")
     layers = _map_layers(db, event.id, tv.display_options(view), fr, rr)
     snap = tv.apply_view(snap, view, datetime.now(UTC), weather=_weather(db, event.id),
@@ -318,13 +322,18 @@ def _msg(m: MessageRow) -> dict:
             "body": m.body, "created_at": m.created_at}
 
 
-def _alert(db: Session, event_id: str, display: dict) -> dict:
-    """Red banner and SOS reminder of a screen, from the last immediate and
-    urgent messages (distress and end of distress)."""
+def _alert_messages(db: Session, event_id: str) -> list[dict]:
+    """Last immediate and urgent messages (distress and end of distress)."""
     rows = db.scalars(select(MessageRow).where(MessageRow.event_id == event_id,
                                                MessageRow.priority.in_(("immediate", "urgent")))
                       .order_by(MessageRow.created_at.desc()).limit(300)).all()
-    return tv.alert_state([_msg(m) for m in reversed(rows)], datetime.now(UTC), display.get("alert_cleared"))
+    return [_msg(m) for m in reversed(rows)]
+
+
+def _alert(db: Session, event_id: str, display: dict, messages: list[dict] | None = None) -> dict:
+    """Red banner and SOS reminder of a screen."""
+    msgs = messages if messages is not None else _alert_messages(db, event_id)
+    return tv.alert_state(msgs, datetime.now(UTC), display.get("alert_cleared"))
 
 
 @router.get("/api/v0.1/events/{event_id}/displays")
@@ -645,6 +654,22 @@ h2{font-size:16px;color:var(--h2);text-transform:uppercase;letter-spacing:1px;ma
 .lowzoom .rlab{display:none}
 #sos{display:none;background:#ff4d5e;color:#fff;font-weight:800;font-size:16px;border-radius:999px;padding:3px 10px;animation:blink 1.2s steps(2,start) infinite}
 @keyframes blink{to{visibility:hidden}}
+/* SOS on the map (lot 17): red pulsing halo and « SOS · nom » above every
+   other object; dashed when the position is older than 10 min; red arrow
+   at the edge with the distance when the operator is out of view. */
+.sosm{position:relative}
+.sosh{position:absolute;left:-34px;top:-34px;width:68px;height:68px;border-radius:50%;border:4px solid #ff1f3d;background:rgba(255,31,61,.18);box-sizing:border-box;
+-webkit-animation:sospulse 1.4s ease-out infinite;animation:sospulse 1.4s ease-out infinite}
+.sosm.old .sosh{border-style:dashed;background:rgba(255,31,61,.08)}
+.sosd{position:absolute;left:-8px;top:-8px;width:16px;height:16px;border-radius:50%;background:#ff1f3d;border:2px solid #fff;box-sizing:border-box}
+.sosl{position:absolute;left:0;bottom:40px;-webkit-transform:translateX(-50%);transform:translateX(-50%);white-space:nowrap;text-align:center;background:#d50000;color:#fff;
+font-weight:800;font-size:18px;line-height:1.25;border-radius:6px;padding:2px 9px;box-shadow:0 2px 8px rgba(0,0,0,.5)}
+.sosl small{display:block;font-size:13px;font-weight:600}
+@-webkit-keyframes sospulse{0%{-webkit-transform:scale(.55);opacity:1}100%{-webkit-transform:scale(1.35);opacity:.3}}
+@keyframes sospulse{0%{transform:scale(.55);opacity:1}100%{transform:scale(1.35);opacity:.3}}
+#sosArrows{position:absolute;top:0;right:0;bottom:0;left:0;z-index:960;pointer-events:none;overflow:hidden}
+.sosa{position:absolute;-webkit-transform:translate(-50%,-50%);transform:translate(-50%,-50%);text-align:center}.sosa svg{display:block;margin:0 auto}
+.sosa span{display:inline-block;margin-top:2px;background:#d50000;color:#fff;font-weight:800;font-size:17px;border-radius:6px;padding:2px 8px;white-space:nowrap}
 #ident{display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:3000;align-items:center;justify-content:center;text-align:center;padding:4vw;box-sizing:border-box;
 background:rgba(3,21,43,.92);color:#fff;font-size:14vw;font-size:min(14vw,22vh);font-weight:800;line-height:1.1;overflow-wrap:anywhere}
 #alert{display:none;position:fixed;left:0;right:0;top:0;padding:18px;background:#ff4d5e;color:#fff;font-size:30px;font-weight:700;text-align:center;z-index:2000}
@@ -653,7 +678,7 @@ background:rgba(3,21,43,.92);color:#fff;font-size:14vw;font-size:min(14vw,22vh);
 <div class="lead">Afficher SARCADE sur cet écran</div><div id="code">······</div>
 <div class="how">Dans l'application SARCADE : <b>Outils › Afficher sur une TV</b>, puis scannez le QR code ou saisissez ce code.</div>
 <div id="hint"></div></div><div id="qr"></div></div>
-<div id="app"><header><div class="hlogo"><img src="/tv/logo.png" alt="SARCADE"></div><div id="title"></div><div class="stats"><span><b id="nOps">0</b> opérateurs actifs</span><span><b id="nAprs">0</b> stations APRS</span><span id="link"><span class="dot"></span><span id="linkTxt">Connexion…</span></span></div><span id="sos" title="Détresse en cours">SOS</span><div id="wx"></div><div id="sun"></div><div id="clock">--:--</div></header><div id="mapBox"><div id="map"></div><div id="legend"></div><div id="from"></div><div id="acAlert"></div></div><aside><div id="msgBox"><h2>Messages</h2><div id="msgs"></div></div></aside></div>
+<div id="app"><header><div class="hlogo"><img src="/tv/logo.png" alt="SARCADE"></div><div id="title"></div><div class="stats"><span><b id="nOps">0</b> opérateurs actifs</span><span><b id="nAprs">0</b> stations APRS</span><span id="link"><span class="dot"></span><span id="linkTxt">Connexion…</span></span></div><span id="sos" title="Détresse en cours">SOS</span><div id="wx"></div><div id="sun"></div><div id="clock">--:--</div></header><div id="mapBox"><div id="map"></div><div id="legend"></div><div id="from"></div><div id="acAlert"></div><div id="sosArrows"></div></div><aside><div id="msgBox"><h2>Messages</h2><div id="msgs"></div></div></aside></div>
 <div id="alert"></div><div id="ident"></div>
 <script>
 // Plain old script: if the page script cannot run on this browser (too old
@@ -833,6 +858,30 @@ if(s.references||key!==lastOp)drawRefs(o);lastOp=key;fr=s.features_rev||'';rr=s.
 // One opacity per layer: operators and APRS apart.
 for(const m of Object.values(markers)){const op=nz(m._aprs?o.aprs:o.ops,o.ops,1);m.setStyle({opacity:op,fillOpacity:.9*op});m.bringToFront();}
 look(s);}
+// SOS on the map (lot 17): one halo per open distress, at the last known
+// position sent by the server whatever the layers; the view of the TV never
+// moves by itself, an operator out of view gets a red arrow at the edge.
+let sosL,sosData=[];
+function ago(v){const t=Math.max(0,Number(v)||0);if(t<60)return 'il y a '+t+' s';if(t<3600)return 'il y a '+Math.floor(t/60)+' min';
+if(t<172800)return 'il y a '+Math.floor(t/3600)+' h';return 'il y a '+Math.floor(t/86400)+' j';}
+function km(m){return m<1000?Math.round(m)+' m':(m/1000).toFixed(m<10000?1:0).replace('.',',')+' km';}
+function drawSos(){if(!sosL)return;sosL.clearLayers();
+for(const d of sosData){if(!d.known)continue;const sub=d.stale?'position ancienne · '+ago(d.age_s):ago(d.age_s);
+L.marker([d.lat,d.lon],{pane:'sos',interactive:false,keyboard:false,icon:L.divIcon({className:'sosm'+(d.stale?' old':''),iconSize:[0,0],
+html:'<div class="sosh"></div><div class="sosd"></div><div class="sosl">SOS · '+esc(d.label)+'<small>'+esc(sub)+'</small></div>'})}).addTo(sosL);}
+sosArrows();}
+function sosArrows(){const box=$('sosArrows');if(!box||!map)return;const sz=map.getSize(),c=map.getCenter(),b=map.getBounds();let h='';
+for(const d of sosData){if(!d.known)continue;const ll=L.latLng(d.lat,d.lon);if(b.contains(ll))continue;
+const p=map.latLngToContainerPoint(ll),cx=sz.x/2,cy=sz.y/2,dx=p.x-cx,dy=p.y-cy;
+const k=Math.min((cx-40)/Math.max(Math.abs(dx),1e-6),(cy-40)/Math.max(Math.abs(dy),1e-6));
+const x=Math.max(120,Math.min(sz.x-120,cx+dx*k)),y=Math.max(40,Math.min(sz.y-60,cy+dy*k)),deg=Math.atan2(dy,dx)*180/Math.PI;
+h+='<div class="sosa" style="left:'+Math.round(x)+'px;top:'+Math.round(y)+'px"><svg width="44" height="44" viewBox="0 0 44 44" style="-webkit-transform:rotate('+deg+'deg);transform:rotate('+deg+'deg)">'
++'<path d="M4 15h20V5l17 17-17 17V29H4z" fill="#ff1f3d" stroke="#fff" stroke-width="2"/></svg><span>SOS · '+esc(d.label)+' · '+km(map.distance(c,ll))+'</span></div>';}
+box.innerHTML=h;}
+function sosPill(s){const sos=s.sos||[];sosData=s.distress||[];drawSos();
+const unk=sosData.filter(d=>!d.known).map(d=>d.label);const el=$('sos');el.style.display=sos.length?'inline-block':'none';
+el.textContent=(sos.length>1?sos.length+' SOS':'SOS'+(unk.length?' · '+unk[0]:''))+(unk.length?(sos.length>1?' · position inconnue : '+unk.join(', '):' · position inconnue'):'');
+el.title='Détresse en cours : '+sos.join(', ');}
 // Top bar: clock, and the state of the link with the server.
 let lastOk=0;
 function tick(){const d=new Date();$('clock').textContent=d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});}
@@ -856,9 +905,10 @@ $('msgs').innerHTML=s.messages.slice(-14).reverse().map(m=>'<div class="m '+(m.p
 // Red banner chosen by the server (cleared from a phone, or closed by « Fin
 // de détresse »); the SOS pill stays while a distress is not closed.
 const a=s.alert;$('alert').style.display=a?'block':'none';if(a)$('alert').textContent=a.sender_id+' : '+a.body;
-const sos=s.sos||[];$('sos').style.display=sos.length?'inline-block':'none';$('sos').title='Détresse en cours : '+sos.join(', ');}
+sosPill(s);}
 function start(){$('pair').style.display='none';$('app').style.display='grid';map=L.map('map',{zoomControl:false}).setView([46.6,2.4],6);
 map.on('zoomend moveend',declutter);trL=L.layerGroup().addTo(map);acL=L.layerGroup().addTo(map);drawL=L.layerGroup().addTo(map);brgL=L.layerGroup().addTo(map);refL=L.layerGroup().addTo(map);
+map.createPane('sos').style.zIndex=680;sosL=L.layerGroup().addTo(map);map.on('moveend',sosArrows);
 map.on('zoomend',function(){drawTraces();});
 map.on('zoomend',()=>map.getContainer().classList.toggle('lowzoom',map.getZoom()<12));map.getContainer().classList.add('lowzoom');tick();setInterval(tick,1000);refresh();setInterval(refresh,10000);}
 if(token)start();else pair();

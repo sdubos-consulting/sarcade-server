@@ -24,6 +24,7 @@ Type invalide : 422 (`invalid_layers`, `invalid_opacity`, `invalid_messages`…)
 - `messages` : messages généraux seulement (la main courante n'est plus envoyée ni affichée, 29 octobre 2026) ;
 - `alert` : bandeau rouge (`sender_id`, `body`, `created_at`) = dernier message immédiat général des 10 dernières minutes, sauf s'il a été retiré sur cet écran ou si c'est une détresse (« 🆘 … ») close par un message « Fin de détresse — <même expéditeur> » (ou « End of distress ») ; `null` sinon ;
 - `sos` : expéditeurs dont la détresse n'est pas close (pastille « SOS » clignotante de l'en-tête, qui reste après retrait du bandeau).
+- `distress` (lot 17, « SOS : voir sur la carte où est l'opérateur en détresse ») : une entrée par détresse ouverte, la plus ancienne d'abord : `device_id`, `label`, `since` (heure du SOS), `known` ; si une position est connue, `lat`, `lon`, `time`, `age_s` et `stale` (plus de 10 min : halo en tirets, « position ancienne »). Position = dernier relevé de position de l'opérateur, ou celle écrite dans le message SOS (« position 48.80000, 2.10000 ») si elle est plus récente. Calculé **avant** les couches et filtres de la vue : présent même si l'opérateur est masqué ou hors ligne. La TV dessine un halo rouge pulsé et l'étiquette « SOS · nom » au-dessus de tout, ne bouge pas d'elle-même et place une flèche rouge au bord avec la distance si l'opérateur est hors de la vue ; pastille « SOS · nom · position inconnue » sans position, « 2 SOS » s'il y en a plusieurs.
 
 ## Retirer le bandeau SOS d'un écran
 

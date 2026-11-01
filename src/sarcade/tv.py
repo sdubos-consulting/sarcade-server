@@ -224,6 +224,54 @@ def alert_state(messages: list[dict], now: datetime, cleared_at: float | None = 
             "sos": sorted(still)}
 
 
+# --- SOS on the map (card « SOS : voir sur la carte où est l'opérateur en
+# détresse », choices validated 1 Nov 2026, 12 h 04; lot 17) ----------------
+# Each open distress: the operator, his last known position and its age,
+# whatever the layers and filters of the view (the halo is always shown).
+
+SOS_STALE_AFTER = timedelta(minutes=10)
+# « position 48.80000, 2.10000 » written by the application in the distress
+# message (distress.body): a known position when no report reached the server.
+_BODY_POSITION = re.compile(r"position\s+(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)")
+
+
+def body_position(body) -> tuple[float, float] | None:
+    m = _BODY_POSITION.search(str(body or ""))
+    if m is None:
+        return None
+    lat, lon = float(m.group(1)), float(m.group(2))
+    return (lat, lon) if -90 <= lat <= 90 and -180 <= lon <= 180 else None
+
+
+def distress_marks(messages: list[dict], positions: list[dict], now: datetime) -> list[dict]:
+    """One mark per open distress, oldest first: ``device_id``, ``label``,
+    ``since`` (time of the SOS) and, when a position is known, ``lat``,
+    ``lon``, ``time``, ``age_s`` and ``stale`` (older than 10 minutes:
+    dashed halo, « position ancienne »). The position is the last report of
+    the operator, or the one written in the SOS message when it is more
+    recent; ``known`` False without any (« position inconnue »)."""
+    still = open_distress(messages)
+    by_device = {p.get("device_id"): p for p in positions}
+    out = []
+    for who, m in sorted(still.items(), key=lambda kv: _time(kv[1].get("created_at")) or now):
+        sent = _time(m.get("created_at"))
+        p = by_device.get(who)
+        mark: dict = {"device_id": who, "label": (p or {}).get("callsign") or who or "",
+                      "since": sent.isoformat() if sent else None, "known": False}
+        best = None
+        if p is not None and _time(p.get("time")) is not None:
+            best = (float(p["lat"]), float(p["lon"]), _time(p.get("time")))
+        written = body_position(m.get("body"))
+        if written is not None and sent is not None and (best is None or sent > best[2]):
+            best = (written[0], written[1], sent)
+        if best is not None:
+            age = max(0, int((now - best[2]).total_seconds()))
+            mark.update(known=True, lat=best[0], lon=best[1], time=best[2].isoformat(), age_s=age,
+                        stale=now - best[2] > SOS_STALE_AFTER)
+        out.append(mark)
+    return out
+
+
 def clean_view(view: dict | None, now: float | None = None) -> dict | None:
     """View copied from a phone: centre, zoom, base map. The tile address is
     used by the public TV page, so only an https template is accepted."""
