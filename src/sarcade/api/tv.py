@@ -655,7 +655,9 @@ h2{font-size:16px;color:var(--h2);text-transform:uppercase;letter-spacing:1px;ma
 .ac{position:relative}.ac svg{display:block}.acl{position:absolute;white-space:nowrap;font-size:13px;font-weight:700;background:rgba(8,17,28,.85);padding:1px 6px;border-radius:4px}
 #acLeg{display:none;position:absolute;left:10px;top:10px;z-index:900;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:5px 10px;font-size:14px}
 #acLeg div{display:flex;align-items:center;white-space:nowrap;line-height:1.55}#acLeg .h{font-weight:700;color:var(--muted)}#acLeg i{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:7px;flex:none}
-#from{display:none;position:absolute;right:10px;bottom:10px;z-index:900;background:var(--panel);color:var(--muted);font-size:13px;border-radius:6px;padding:2px 8px}
+/* « Vue de … » (lot 18): a Leaflet control of the bottom right corner, so
+   always stacked above the OpenStreetMap mention, never under it. */
+#map #from{display:none;margin:0 10px 6px 0;background:#08111c;color:#fff;font-size:15px;font-weight:600;line-height:1.4;border-radius:6px;padding:3px 10px}
 .txt span{white-space:nowrap;font-size:16px;font-weight:700;text-shadow:0 0 3px var(--shadow)}
 .lowzoom .rlab{display:none}
 #sos{display:none;background:#ff4d5e;color:#fff;font-weight:800;font-size:16px;border-radius:999px;padding:3px 10px;animation:blink 1.2s steps(2,start) infinite}
@@ -954,6 +956,7 @@ const a=s.alert;$('alert').style.display=a?'block':'none';if(a)$('alert').textCo
 sosPill(s);}
 function start(){$('pair').style.display='none';$('app').style.display='grid';map=L.map('map',{zoomControl:false}).setView([46.6,2.4],6);
 map.on('zoomend moveend',declutter);trL=L.layerGroup().addTo(map);acL=L.layerGroup().addTo(map);drawL=L.layerGroup().addTo(map);brgL=L.layerGroup().addTo(map);refL=L.layerGroup().addTo(map);
+const fromCtl=L.control({position:'bottomright'});fromCtl.onAdd=function(){return $('from');};fromCtl.addTo(map);
 map.createPane('sos').style.zIndex=680;sosL=L.layerGroup().addTo(map);map.on('moveend',sosArrows);
 map.on('zoomend',function(){drawTraces();});
 map.on('zoomend',()=>map.getContainer().classList.toggle('lowzoom',map.getZoom()<12));map.getContainer().classList.add('lowzoom');tick();setInterval(tick,1000);refresh();setInterval(refresh,10000);}
