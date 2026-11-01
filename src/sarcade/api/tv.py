@@ -652,9 +652,13 @@ h2{font-size:16px;color:var(--h2);text-transform:uppercase;letter-spacing:1px;ma
 #legend i{display:inline-block;width:22px;height:4px;border-radius:2px;flex:none}#legend .zr{width:14px;height:14px;border-radius:50%;background:rgba(255,77,94,.15);border:2px solid}
 #legend .zx{border-style:dashed;background:rgba(255,159,28,.12)}#legend .gx{height:0;border-top:3px dashed #9aa3ad;background:none}
 /* Distance scale (lot 18): metric only, bottom left just above the legend
-   (placeScale), readable from afar: thick line, 15 px, dark background. */
-#map .leaflet-control-scale{margin:0 0 0 10px}
-#map .leaflet-control-scale-line{border:4px solid #fff;border-top:0;color:#fff;background:rgba(3,21,43,.88);font-size:15px;font-weight:700;line-height:1.35;padding:2px 8px 1px;text-shadow:none}
+   (placeScale). Lot 19: drawn as in the web application (white rounded
+   label, dark text above a thin black line with a small square end at each
+   side), enlarged for reading from afar (15 px instead of 11 px, proportions
+   kept), the same in day and night. */
+#map .leaflet-control-scale{margin:0 0 0 10px;background:rgba(255,255,255,.95);border-radius:8px;padding:3px 8px 5px}
+#map .leaflet-control-scale-line{position:relative;border:0;background:none;color:#1f1f1f;font-size:15px;font-weight:600;line-height:1.25;padding:0 0 11px;text-shadow:none}
+#map .leaflet-control-scale-line:after{content:'';position:absolute;left:0;right:0;bottom:0;height:8px;border:3px solid #1f1f1f;border-top:0;box-sizing:border-box}
 #acAlert{display:none;position:absolute;left:50%;top:10px;-webkit-transform:translateX(-50%);transform:translateX(-50%);z-index:950;background:#ff4d5e;color:#fff;font-weight:800;font-size:18px;border-radius:8px;padding:6px 14px;white-space:nowrap}
 .ac svg{display:block}.acl{position:absolute;white-space:nowrap;font-size:13px;font-weight:700;background:rgba(8,17,28,.85);padding:1px 6px;border-radius:4px}
 #acLeg{display:none;position:absolute;left:10px;top:10px;z-index:900;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:5px 10px;font-size:14px}
