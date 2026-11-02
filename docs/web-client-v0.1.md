@@ -5,9 +5,12 @@ Le serveur SARCADE sert lui-même le client Web : accès depuis n'importe quel n
 ## Activation
 **Avec Docker (cas normal)** : l'image du serveur contient déjà le client Web, téléchargé à la construction depuis la pré-version `web-dev` de `sarcade-app` (mise à jour par sa CI). Après `docker compose up -d --build`, le client s'ouvre à l'adresse du serveur, par exemple `http://serveur:8000/`, dans Chrome, Edge, Firefox ou Safari.
 
-- Récupérer un client plus récent : `docker compose build --build-arg SARCADE_WEB_CACHEBUST=$(date +%s) server`.
-- Image sans client Web (API seule) : `--build-arg SARCADE_WEB_URL=`.
-- Construction sans Internet : le téléchargement échoue sans bloquer, l'image est construite sans client Web.
+- **Client toujours à jour, sans réglage** : le client est téléchargé par un `ADD` du `Dockerfile`, que Docker vérifie à chaque construction. Si une nouvelle version a été publiée sur `web-dev`, la construction suivante la prend (même quand le serveur a été fusionné avant l'application) ; sinon le cache est gardé. Une reconstruction normale suffit : `docker compose build server` puis `docker compose up -d server`. Le journal de construction affiche `web client: embedded in /app/web, sha256:…` ; la même empreinte est servie à `/sarcade-web.sha256` et correspond au champ `digest` de l'archive dans l'API GitHub (`/repos/sdubos-consulting/sarcade-app/releases/tags/web-dev`) : c'est le moyen de savoir quelle publication est servie (le `version.json` des constructions Web ne change pas d'une publication à l'autre).
+- Forçage manuel (normalement inutile) : `--build-arg SARCADE_WEB_CACHEBUST=$(date +%s)` réinstalle le client.
+- Autre archive : `--build-arg SARCADE_WEB_URL=<adresse d'un sarcade-web.tar.gz>`.
+- Image sans client Web (API seule, aucun téléchargement du client) : `--build-arg SARCADE_WEB=none`.
+- Construction sans accès à GitHub : la construction s'arrête sur l'étape `ADD` (le serveur en place continue de tourner) ; construire avec `--build-arg SARCADE_WEB=none`, ou utiliser l'image publiée sur ghcr.io.
+- Docker avec BuildKit requis (par défaut depuis Docker 23, Docker Desktop, Container Manager de Synology DSM 7.2).
 
 **Sans Docker** : extraire l'artefact `sarcade-web.tar.gz` dans un dossier, par exemple `/opt/sarcade/web`, puis définir `SARCADE_WEB_ROOT=/opt/sarcade/web` et redémarrer le serveur.
 

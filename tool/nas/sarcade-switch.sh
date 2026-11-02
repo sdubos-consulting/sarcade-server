@@ -78,8 +78,9 @@ git_ checkout -q -B "$target" "origin/$target"
 git_ log --oneline -1
 
 say "Reconstruction (quelques minutes)"
-# Nouveau numéro à chaque fois : l'image récupère toujours le dernier client web.
-compose build --build-arg SARCADE_WEB_CACHEBUST="$(date +%s)"
+# L'image vérifie elle-même le client web publié (ADD du Dockerfile) :
+# le dernier client est pris sans réglage.
+compose build
 compose up -d
 
 say "Attente du serveur"

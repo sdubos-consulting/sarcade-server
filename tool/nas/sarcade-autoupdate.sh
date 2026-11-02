@@ -109,7 +109,8 @@ fi
 if [ -n "$web_now" ] && [ "$web_now" != "$web_done" ]; then
   log "nouveau client web ($web_now) : reconstruction du serveur"
   [ "$DRY" = 1 ] && { log "(essai : rien n'est fait)"; exit 0; }
-  if compose build --build-arg SARCADE_WEB_CACHEBUST="$(date +%s)" server >> "$LOG" 2>&1 \
+  # Reconstruction normale : le Dockerfile voit lui-même le nouveau client.
+  if compose build server >> "$LOG" 2>&1 \
      && compose up -d server >> "$LOG" 2>&1; then
     for i in $(seq 1 45); do curl -fsS --max-time 3 "$HEALTH" >/dev/null 2>&1 && break; sleep 2; done
     if curl -fsS --max-time 3 "$HEALTH" >/dev/null 2>&1; then
