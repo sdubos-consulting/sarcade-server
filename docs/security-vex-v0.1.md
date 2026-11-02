@@ -19,7 +19,7 @@ L'image publiée sur ghcr.io (`image.yml`) garde son SBOM **SPDX** attesté et y
 Chaque nuit (01 h 37 UTC) et à la main (« Run workflow », case « SBOM d'essai ») :
 
 1. construit l'image de `main` comme le NAS et en extrait le SBOM (à défaut, le fabrique avec syft sur l'image) ;
-2. le passe à **OSV-Scanner** (`ghcr.io/google/osv-scanner`) ;
+2. le passe à **OSV-Scanner** (`ghcr.io/google/osv-scanner`), sur une copie où la version Debian des purl est ramenée à la version majeure (`distro=debian-13.7` → `debian-13`, nom de l'écosystème OSV `Debian:13` ; sans cela aucune faille Debian n'est trouvée), `tool/security/osv_input.py` ;
 3. applique le registre `security/vex.json` (ci-dessous) avec `tool/security/osv_report.py` ;
 4. tient **un seul** ticket GitHub « Faille dans un composant » (étiquette `security`) : ouvert avec la liste s'il reste une faille non écartée, mis à jour sinon (un commentaire, donc un e-mail de GitHub, quand une faille est **nouvelle**), fermé quand il n'y a plus rien.
 
