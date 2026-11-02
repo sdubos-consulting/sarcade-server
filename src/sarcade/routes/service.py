@@ -223,16 +223,28 @@ def validate_move_order(payload: dict, *, event_id: str, object_id: str) -> dict
     return data
 
 
+def same_person(callsign_a: str | None, callsign_b: str | None) -> bool:
+    """Two terminals of the same person: same callsign without its SSID
+    (« F4ABC-7 » and « f4abc »), never two terminals without callsign
+    (lot 20, card « Android Auto : ordres de déplacement peu utilisables… »,
+    choice 2)."""
+    def base(c: str | None) -> str:
+        return (c or "").strip().upper().split("-")[0]
+    return bool(base(callsign_a)) and base(callsign_a) == base(callsign_b)
+
+
 def move_order_allowed(before: dict | None, created_by: str | None, change: dict, actor: str,
-                       action: str, pco: bool) -> bool:
+                       action: str, pco: bool, same_person_as_target: bool = False) -> bool:
     """The PCO gives the order; the operator only answers it (same order,
-    status accepted / refused / arrived); the PCO or the author changes or
+    status accepted / refused / arrived), from the targeted terminal or
+    another terminal of the same person (lot 20, e.g. the phone in the car
+    when the order went to the PC); the PCO or the author changes or
     cancels it."""
     if before is None:
         return pco and action != "delete"
     if pco or actor == created_by:
         return True
-    return (action != "delete" and actor == before.get("target_id")
+    return (action != "delete" and (actor == before.get("target_id") or same_person_as_target)
             and change.get("status") in MOVE_ORDER_ANSWERS
             and change.get("target_id") == before.get("target_id")
             and change.get("destination") == before.get("destination")

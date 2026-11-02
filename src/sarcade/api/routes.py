@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from sarcade.db.models import CommGroupRow, EventRow, LogbookRow, MessageRow, RouteObjectRow, SyncOperationRow
+from sarcade.db.models import CommGroupRow, DeviceRow, EventRow, LogbookRow, MessageRow, RouteObjectRow, SyncOperationRow
 from sarcade.features import service as features
 from sarcade.groups import service as groups
 from sarcade.routes import service as routes
@@ -84,7 +84,8 @@ def apply_route_object(db: Session, op, now: datetime, notices: Notices,
         return "rejected", 0, None
     if kind == "move_order" and not routes.move_order_allowed(
             dict(row.data) if row is not None else None, row.created_by if row is not None else None,
-            change, actor, op.action, pco or groups.is_pco(actor)):
+            change, actor, op.action, pco or groups.is_pco(actor),
+            _same_person(db, op.event_id, actor, (row.data or {}).get("target_id") if row is not None else None)):
         return "rejected", 0, None
     if kind in ("road_closure", "itinerary", "move_order"):
         route_row = None
@@ -132,6 +133,15 @@ def apply_route_object(db: Session, op, now: datetime, notices: Notices,
     _logbook_and_notices(db, op.event_id, kind, row, before, was_deleted, change, route_row, notices, now)
     suffix = "deleted" if row.deleted_at is not None else "upserted"
     return "accepted", cursor, {"type": f"{kind}.{suffix}", "data": result}
+
+
+def _same_person(db: Session, event_id: str, actor: str, target: str | None) -> bool:
+    """The actor and the target of an order are terminals of the same person
+    (same callsign in Paramètres › Profil), lot 20."""
+    if not target or target == actor:
+        return False
+    a, t = db.get(DeviceRow, (event_id, actor)), db.get(DeviceRow, (event_id, target))
+    return a is not None and t is not None and routes.same_person(a.callsign, t.callsign)
 
 
 def _logbook_and_notices(db, event_id, kind, row, before, was_deleted, change, route_row, notices, now):
