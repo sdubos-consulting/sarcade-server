@@ -4,6 +4,7 @@
 # picked up by a plain build, without --no-cache nor SARCADE_WEB_CACHEBUST.
 # SARCADE_WEB=none: image without web client (API only, nothing downloaded).
 ARG SARCADE_WEB=release
+ARG SARCADE_SBOM=syft
 FROM scratch AS web-none
 FROM scratch AS web-release
 ARG SARCADE_WEB_URL=https://github.com/sdubos-consulting/sarcade-app/releases/download/web-dev/sarcade-web.tar.gz
@@ -13,8 +14,8 @@ FROM web-${SARCADE_WEB} AS web
 # Inventory of the components (SBOM, CycloneDX) of the image actually built,
 # served at /sarcade-sbom.cdx.json (docker/make_sbom.py). syft comes from its
 # official image (Docker Hub, like the Python base image), is mounted only for
-# that step and never stays in the image. SARCADE_SBOM=none: no SBOM.
-ARG SARCADE_SBOM=syft
+# that step and never stays in the image. SARCADE_SBOM=none: no SBOM
+# (declared at the top with SARCADE_WEB: a FROM only sees those arguments).
 FROM scratch AS sbom-tool-none
 FROM anchore/syft:v1.55.0 AS sbom-tool-syft
 FROM sbom-tool-${SARCADE_SBOM} AS sbom-tool
