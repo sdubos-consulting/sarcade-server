@@ -57,7 +57,7 @@ jobs:
           mkdir -p sbom
           cid=$(docker create sarcade-server:sbom)
           if docker cp "$cid:/app/sbom/sarcade-image.json" sbom/sarcade-server.cdx.json; then
-            echo "SBOM embedded: $(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["components"]))' sbom/sarcade-server.cdx.json) components"
+            python3 tool/security/sbom_summary.py sbom/sarcade-server.cdx.json | tee -a "$GITHUB_STEP_SUMMARY"
           else
             echo "::warning title=SBOM::no SBOM in the image, made from the image instead"
           fi

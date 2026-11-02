@@ -151,3 +151,14 @@ def test_unreadable_osv_result_fails(tmp_path):
     bad = tmp_path / "osv.json"
     bad.write_text("Scanning…", encoding="utf-8")
     assert load().main(["--osv", str(bad), "--vex", str(tmp_path / "none.json")]) == 2
+
+
+def test_sbom_summary_counts_kinds_and_distribution():
+    spec = importlib.util.spec_from_file_location("sbom_summary", ROOT / "tool" / "security" / "sbom_summary.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    line = module.summary({"components": [
+        {"purl": "pkg:pypi/fastapi@1"}, {"purl": "pkg:pypi/httpx@1"},
+        {"purl": "pkg:deb/debian/libc6@2.41?arch=amd64&distro=debian-13"}, {"name": "sarcade-web"},
+    ]})
+    assert line == "SBOM : 4 composants (pypi 2, deb 1, sans purl 1) ; distribution : debian-13 1"
