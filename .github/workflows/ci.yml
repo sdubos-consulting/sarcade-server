@@ -150,6 +150,9 @@ jobs:
           grep -q "SARCADE" index.html
           curl -fsS http://localhost:8000/manifest.json | grep -q '"standalone"'
           curl -fsS http://localhost:8000/health
+      - name: Verify the SBOM of the image (served at /sarcade-sbom.cdx.json)
+        working-directory: demo
+        run: docker compose -f docker-compose.demo.yml run --rm --entrypoint sh simulator -c "pip install -q httpx && python /demo/verify_sbom.py"
       - name: Logs on failure
         if: failure()
         working-directory: demo

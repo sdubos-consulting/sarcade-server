@@ -1,7 +1,8 @@
 # Server image: built on every change of main, rebuilt every week even
 # without code change (fixes of the base system), scanned before
 # publication (a critical flaw blocks it), published on ghcr.io, signed
-# (Sigstore keyless, no key to keep) with its inventory of components (SBOM).
+# (Sigstore keyless, no key to keep) with its inventory of components (SBOM,
+# SPDX and CycloneDX).
 name: Image
 
 on:
@@ -72,10 +73,21 @@ jobs:
           format: spdx-json
           output-file: sbom.spdx.json
           upload-release-assets: ${{ startsWith(github.ref, 'refs/tags/v') }}
+      # Same inventory in CycloneDX (format read by OSV-Scanner and the nightly
+      # check, sbom-nightly.yml), attached to the same releases.
+      - name: Inventory of components (SBOM, CycloneDX)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.IMAGE }}@${{ steps.push.outputs.digest }}
+          format: cyclonedx-json
+          output-file: sbom.cdx.json
+          artifact-name: sbom.cdx.json
+          upload-release-assets: ${{ startsWith(github.ref, 'refs/tags/v') }}
       - uses: sigstore/cosign-installer@v3
       - name: Sign the image and attest its SBOM
         run: |
           cosign sign --yes "$IMAGE@$DIGEST"
           cosign attest --yes --type spdxjson --predicate sbom.spdx.json "$IMAGE@$DIGEST"
+          cosign attest --yes --type cyclonedx --predicate sbom.cdx.json "$IMAGE@$DIGEST"
         env:
           DIGEST: ${{ steps.push.outputs.digest }}

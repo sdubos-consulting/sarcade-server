@@ -11,12 +11,34 @@ Spec: « Mises à jour et sécurité » (Obsidian vault), validated on 10 Oct 20
 | Known vulnerabilities in dependencies (pip-audit) | job `audit` of `ci.yml` |
 | Python code analysis (CodeQL) | `.github/workflows/codeql.yml` |
 | Pinned dependencies checked against their hashes | `uv.lock`, `Dockerfile` |
-| Image: weekly rebuild without cache, Trivy scan (a critical fixed flaw blocks the publication), ghcr.io, Sigstore signature, SBOM (SPDX) attested and attached to releases | `.github/workflows/image.yml` |
+| Image: weekly rebuild without cache, Trivy scan (a critical fixed flaw blocks the publication), ghcr.io, Sigstore signature, SBOM (SPDX and CycloneDX) attested and attached to releases | `.github/workflows/image.yml` |
+| SBOM (CycloneDX) of the image actually built (NAS included), made at the build and served at `/sarcade-sbom.cdx.json` | `Dockerfile`, `docker/make_sbom.py` |
+| Nightly check of the SBOM against OSV (OSV-Scanner), one issue « Faille dans un composant » (label `security`) opened, updated or closed | `.github/workflows/sbom-nightly.yml` |
+| Register of the dismissed flaws (OpenVEX, reason and review date required) | `security/vex.json`, `docs/security-vex-v0.1.md` |
 
 To set in the repository (owner): Dependabot alerts and security updates,
 secret scanning with push protection, « Allow auto-merge », and a protection
 of `main` requiring the checks `test`, `audit` and `demo-integration` —
 without required checks GitHub would merge a Dependabot PR without waiting.
+
+## Inventory of components (SBOM)
+
+Detail: `docs/security-vex-v0.1.md`.
+
+- **Image actually running**: the `Dockerfile` (the NAS builds its own image)
+  writes the CycloneDX SBOM of the image at its last step (syft from its
+  official image, offline, never fatal: without it the build goes on and the
+  address answers 404). Python packages, Debian packages and the embedded web
+  client (its SHA-256, as `/sarcade-web.sha256`). Served at
+  `GET /sarcade-sbom.cdx.json`, same exposure as `/sarcade-web.sha256`.
+- **Published image**: SPDX and CycloneDX, attested (Sigstore) and attached to
+  the `v*` releases (`image.yml`).
+- **Every night**: the image of `main` is built as on the NAS, its SBOM goes
+  through OSV-Scanner, the flaws dismissed in `security/vex.json` are removed,
+  and the issue « Faille dans un composant » (label `security`) is opened,
+  updated (a comment, hence an e-mail, for a new flaw) or closed. Never fails
+  because of a flaw; never runs on the pull requests except as a dry run when
+  they touch the check itself.
 
 ## Security journal (Core, free)
 
@@ -129,6 +151,10 @@ when it comes back (cursor), without loss.
 `docs/wazuh/sarcade_rules.xml`.
 
 ## To check
+
+- Nightly SBOM check: e-mail of the GitHub notification received by the owner
+  (watch the repository, issues) with the test SBOM (« Run workflow », box
+  « SBOM d'essai »).
 
 - Updater, signature and rollback on a real installation with a real signed
   release; offline package.

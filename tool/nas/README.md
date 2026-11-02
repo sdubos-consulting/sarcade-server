@@ -18,6 +18,15 @@ cd /volume1/docker/sarcade && docker compose build server && docker compose up -
 ```
 Résultat attendu : deux fois la même empreinte `sha256:…` (celle du client servi, puis celle de la dernière publication `web-dev`). Si rien n'a été publié depuis la construction précédente, Docker garde son cache et la construction ne prend que quelques secondes. `sarcade-switch` finit par `Terminé` et `Santé : {"status":"ok"…}` ; la même vérification d'empreinte s'applique ensuite.
 
+## Inventaire des composants (SBOM)
+Chaque construction de l'image (`sarcade-switch`, `sarcade-autoupdate`, `docker compose build server`) écrit l'inventaire des composants de l'image réellement construite (CycloneDX : paquets Python, paquets du système, client web embarqué), servi à `/sarcade-sbom.cdx.json`, à côté de `/sarcade-web.sha256`. Si sa génération échoue, la construction continue et l'adresse répond 404 (journal de construction : `sbom: not generated (…)`). Détail : `docs/security-vex-v0.1.md`.
+
+Vérification sur le NAS :
+```
+curl -fsS -o /tmp/sarcade-sbom.json http://localhost:8000/sarcade-sbom.cdx.json && grep -o '"bomFormat": *"CycloneDX"' /tmp/sarcade-sbom.json && grep -c '"purl"' /tmp/sarcade-sbom.json
+```
+Résultat attendu : `"bomFormat": "CycloneDX"` puis le nombre de composants (de l'ordre de quelques centaines). `curl: (22) … 404` : SBOM non produit, voir le journal de construction.
+
 ## sarcade-autoupdate
 Met le NAS à jour tout seul depuis GitHub, toutes les 5 minutes (Planificateur de tâches de DSM) :
 - **nouveau commit sur `main`** dont la CI est au vert → `sarcade-switch main` (sauvegarde, migrations, reconstruction) ;
