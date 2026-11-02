@@ -10,6 +10,15 @@ ARG SARCADE_WEB_URL=https://github.com/sdubos-consulting/sarcade-app/releases/do
 ADD ${SARCADE_WEB_URL} /sarcade-web.tar.gz
 FROM web-${SARCADE_WEB} AS web
 
+# Inventory of the components (SBOM, CycloneDX) of the image actually built,
+# served at /sarcade-sbom.cdx.json (docker/make_sbom.py). syft comes from its
+# official image (Docker Hub, like the Python base image), is mounted only for
+# that step and never stays in the image. SARCADE_SBOM=none: no SBOM.
+ARG SARCADE_SBOM=syft
+FROM scratch AS sbom-tool-none
+FROM anchore/syft:v1.55.0 AS sbom-tool-syft
+FROM sbom-tool-${SARCADE_SBOM} AS sbom-tool
+
 FROM python:3.15-slim
 
 WORKDIR /app
@@ -38,6 +47,15 @@ RUN --mount=type=bind,from=web,target=/tmp/web-src \
     && python /tmp/fetch_web_client.py /tmp/web-src/sarcade-web.tar.gz /app/web \
     && rm /tmp/fetch_web_client.py
 ENV SARCADE_WEB_ROOT=/app/web
+
+# Last step, once everything is installed: the SBOM lists the Python packages,
+# the system packages and the web client. A failure never stops the build
+# (message in the log, file absent, the server answers 404).
+COPY docker/make_sbom.py /tmp/make_sbom.py
+RUN --mount=type=bind,from=sbom-tool,target=/tmp/sbom-tool \
+    python /tmp/make_sbom.py /tmp/sbom-tool /app/sbom/sarcade-image.json \
+    ; rm -f /tmp/make_sbom.py
+ENV SARCADE_SBOM_FILE=/app/sbom/sarcade-image.json
 
 EXPOSE 8000
 CMD ["sh", "-c", "alembic upgrade head && uvicorn sarcade.api.app:app --host 0.0.0.0 --port 8000"]

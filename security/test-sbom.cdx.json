@@ -1,0 +1,23 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "metadata": {
+    "component": {
+      "bom-ref": "sarcade-test-sbom",
+      "type": "application",
+      "name": "sbom-d-essai",
+      "version": "0",
+      "description": "SBOM d'essai : composant à faille connue, pour vérifier l'alerte du contrôle de nuit (sbom-nightly.yml, inject_test)"
+    }
+  },
+  "components": [
+    {
+      "bom-ref": "pkg:pypi/jinja2@2.10",
+      "type": "library",
+      "name": "jinja2",
+      "version": "2.10",
+      "purl": "pkg:pypi/jinja2@2.10"
+    }
+  ]
+}

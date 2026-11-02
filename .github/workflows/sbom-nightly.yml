@@ -1,0 +1,143 @@
+# Nightly check of the inventory of components (SBOM) against OSV.
+# Builds the image of main exactly as the NAS does (Dockerfile), takes the
+# CycloneDX SBOM written inside it, scans it with OSV-Scanner, applies the
+# register of the dismissed flaws (security/vex.json, OpenVEX) and keeps one
+# GitHub issue « Faille dans un composant » (label security) up to date:
+# opened with the list, updated without duplicate (a comment, hence an e-mail,
+# when a flaw is new), closed when nothing remains.
+# Never fails because of a flaw: only when the check itself breaks.
+# Pull requests touching the check run it as a dry run (no issue).
+name: SBOM nightly
+
+on:
+  schedule:
+    - cron: "37 1 * * *"
+  workflow_dispatch:
+    inputs:
+      inject_test:
+        description: "Ajouter le SBOM d'essai (faille connue) pour vérifier l'alerte"
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - .github/workflows/sbom-nightly.yml
+      - tool/security/**
+      - security/**
+      - docker/make_sbom.py
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: sbom-nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  OSV_SCANNER: ghcr.io/google/osv-scanner:v2.7.0
+  ISSUE_TITLE: Faille dans un composant
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Register of the dismissed flaws is valid
+        run: python3 tool/security/osv_report.py --check-vex security/vex.json
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the image as the NAS does
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          pull: true
+          tags: sarcade-server:sbom
+      - name: SBOM embedded in the image
+        run: |
+          mkdir -p sbom
+          cid=$(docker create sarcade-server:sbom)
+          if docker cp "$cid:/app/sbom/sarcade-image.json" sbom/sarcade-server.cdx.json; then
+            echo "SBOM embedded: $(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["components"]))' sbom/sarcade-server.cdx.json) components"
+          else
+            echo "::warning title=SBOM::no SBOM in the image, made from the image instead"
+          fi
+          docker rm "$cid" >/dev/null
+      - name: SBOM made from the image (fallback)
+        if: hashFiles('sbom/sarcade-server.cdx.json') == ''
+        uses: anchore/sbom-action@v0
+        with:
+          image: sarcade-server:sbom
+          format: cyclonedx-json
+          output-file: sbom/sarcade-server.cdx.json
+          upload-artifact: false
+      - name: Test SBOM (known flaw)
+        if: inputs.inject_test
+        run: cp security/test-sbom.cdx.json sbom/test-sbom.cdx.json
+      - name: OSV-Scanner
+        run: |
+          args=()
+          for f in sbom/*.cdx.json; do args+=(-L "/work/$f"); done
+          set +e
+          docker run --rm -v "$PWD:/work" "$OSV_SCANNER" scan source "${args[@]}" --format json > osv.json
+          code=$?
+          set -e
+          echo "OSV-Scanner exit code: $code (0 nothing, 1 flaws found)"
+          if [ "$code" -ne 0 ] && [ "$code" -ne 1 ]; then
+            echo "::error title=OSV-Scanner::exit code $code"
+            exit 1
+          fi
+      - name: Report (register applied)
+        env:
+          SOURCE: "${{ github.ref_name }} @ ${{ github.sha }}${{ inputs.inject_test && ' + SBOM d''essai' || '' }}"
+        run: |
+          python3 tool/security/osv_report.py --osv osv.json --vex security/vex.json \
+            --markdown report.md --ids ids.txt --source "$SOURCE"
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Issue « Faille dans un composant »
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          export LC_ALL=C
+          gh api -X POST "repos/$REPO/labels" -f name=security -f color=d73a4a \
+            -f description="Faille de sécurité" >/dev/null 2>&1 || true
+          num=$(gh api "repos/$REPO/issues?state=open&labels=security&per_page=100" \
+            --jq "[.[] | select(.pull_request == null and .title == \"$ISSUE_TITLE\")][0].number // empty")
+          printf '\n[Exécution du contrôle](%s)\n' "$RUN_URL" >> report.md
+          if [ -s ids.txt ]; then
+            if [ -z "$num" ]; then
+              url=$(gh api "repos/$REPO/issues" -f title="$ISSUE_TITLE" -F body=@report.md \
+                -f 'labels[]=security' --jq .html_url)
+              echo "Issue opened: $url"
+            else
+              gh api "repos/$REPO/issues/$num" --jq .body \
+                | sed -n 's/.*sarcade-osv-ids: \([^ ]*\) -->.*/\1/p' | tr ',' '\n' | sed '/^$/d' | sort -u > old.txt
+              sort -u ids.txt | comm -13 old.txt - > new.txt
+              gh api -X PATCH "repos/$REPO/issues/$num" -F body=@report.md >/dev/null
+              if [ -s new.txt ]; then
+                { echo "Nouvelle(s) faille(s) : $(paste -sd, new.txt | sed 's/,/, /g')"; echo; echo "[Exécution du contrôle]($RUN_URL)"; } > comment.md
+                gh api "repos/$REPO/issues/$num/comments" -F body=@comment.md >/dev/null
+              fi
+              echo "Issue #$num updated ($(wc -l < new.txt) new)"
+            fi
+          elif [ -n "$num" ]; then
+            { echo "Plus aucune faille non écartée : ticket fermé par le contrôle de nuit."; echo; echo "[Exécution du contrôle]($RUN_URL)"; } > comment.md
+            gh api "repos/$REPO/issues/$num/comments" -F body=@comment.md >/dev/null
+            gh api -X PATCH "repos/$REPO/issues/$num" -f state=closed -f state_reason=completed >/dev/null
+            echo "Issue #$num closed"
+          else
+            echo "No flaw, no open issue"
+          fi
+      - name: Keep the SBOM and the result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-nightly
+          path: |
+            sbom/
+            osv.json
+            report.md
+          if-no-files-found: ignore
+          retention-days: 30

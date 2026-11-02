@@ -59,6 +59,7 @@ from . import tv as tv_api
 from sarcade.wakeup import service as wakeup_service
 from sarcade.events import contacts as event_contacts
 from . import diagnostics as diagnostics_api
+from . import sbom as sbom_api
 from sarcade import diagnostics
 
 log = logging.getLogger("sarcade.sync")
@@ -131,6 +132,7 @@ module_loader.load()
 for _router in module_hooks.routers:
     app.include_router(_router)
 app.include_router(diagnostics_api.router)
+app.include_router(sbom_api.router)
 
 
 @app.get("/health")
