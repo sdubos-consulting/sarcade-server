@@ -2,10 +2,15 @@
 
 The archive is downloaded by the ``ADD`` of the Dockerfile ("web" stage),
 which invalidates the build cache whenever a new client is published.
+The SHA-256 of the archive is written next to the client
+(``/sarcade-web.sha256``): it matches the ``digest`` of the asset in the
+GitHub API, to check which publication is served (the ``version.json`` of the
+web builds does not change from one publication to the next).
 Non-fatal: without archive (``SARCADE_WEB=none``) or with a broken one, the
 image still builds and the server simply does not serve the web client (the
 API is unaffected).
 """
+import hashlib
 import sys
 import tarfile
 from pathlib import Path
@@ -27,9 +32,9 @@ def main(archive: str, target: str) -> int:
     if not (dest / "index.html").is_file():
         print("web client: archive has no index.html, not served")
         return 0
-    version = dest / "version.json"
-    detail = f", {version.read_text(encoding='utf-8').strip()}" if version.is_file() else ""
-    print(f"web client: embedded in {dest}{detail}")
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()
+    (dest / "sarcade-web.sha256").write_text(f"sha256:{digest}\n", encoding="utf-8")
+    print(f"web client: embedded in {dest}, sha256:{digest}")
     return 0
 
 

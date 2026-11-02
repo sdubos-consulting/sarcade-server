@@ -1,4 +1,5 @@
 """Web client embedded in the Docker image (docker/fetch_web_client.py, Dockerfile)."""
+import hashlib
 import importlib.util
 import io
 import re
@@ -33,8 +34,9 @@ def test_extracts_archive(tmp_path, capsys):
     dest = tmp_path / "web"
     assert load_fetch().main(str(archive), str(dest)) == 0
     assert (dest / "index.html").read_text(encoding="utf-8") == "<html>SARCADE</html>"
-    out = capsys.readouterr().out
-    assert "embedded" in out and "512" in out
+    digest = "sha256:" + hashlib.sha256(archive.read_bytes()).hexdigest()
+    assert (dest / "sarcade-web.sha256").read_text(encoding="utf-8").strip() == digest
+    assert digest in capsys.readouterr().out
 
 
 def test_no_archive_is_not_fatal(tmp_path, capsys):

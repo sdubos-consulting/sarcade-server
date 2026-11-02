@@ -14,9 +14,9 @@ sarcade-switch main
 ```
 Client web seul, sans toucher au code du serveur :
 ```
-cd /volume1/docker/sarcade && docker compose build server && docker compose up -d server && sleep 20 && curl -fsS http://localhost:8000/version.json
+cd /volume1/docker/sarcade && docker compose build server && docker compose up -d server && sleep 20 && curl -fsS http://localhost:8000/sarcade-web.sha256 && curl -fsS https://api.github.com/repos/sdubos-consulting/sarcade-app/releases/tags/web-dev | grep -o '"digest": *"[^"]*"'
 ```
-Résultat attendu : `{"app_name":…,"version":…,"build_number":"…"}` avec le numéro de la dernière publication `web-dev` (le même que celui affiché par le client web). Si rien n'a été publié depuis la construction précédente, Docker garde son cache et la construction ne prend que quelques secondes. `sarcade-switch` finit par `Terminé` et `Santé : {"status":"ok"…}`.
+Résultat attendu : deux fois la même empreinte `sha256:…` (celle du client servi, puis celle de la dernière publication `web-dev`). Si rien n'a été publié depuis la construction précédente, Docker garde son cache et la construction ne prend que quelques secondes. `sarcade-switch` finit par `Terminé` et `Santé : {"status":"ok"…}` ; la même vérification d'empreinte s'applique ensuite.
 
 ## sarcade-autoupdate
 Met le NAS à jour tout seul depuis GitHub, toutes les 5 minutes (Planificateur de tâches de DSM) :
