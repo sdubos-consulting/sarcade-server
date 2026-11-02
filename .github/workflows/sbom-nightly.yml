@@ -75,8 +75,11 @@ jobs:
         run: cp security/test-sbom.cdx.json sbom/test-sbom.cdx.json
       - name: OSV-Scanner
         run: |
+          # Copies for OSV (Debian point release cut, tool/security/osv_input.py).
+          mkdir -p osv-input
+          for f in sbom/*.cdx.json; do python3 tool/security/osv_input.py "$f" "osv-input/$(basename "$f")"; done
           args=()
-          for f in sbom/*.cdx.json; do args+=(-L "/work/$f"); done
+          for f in osv-input/*.cdx.json; do args+=(-L "/work/$f"); done
           set +e
           docker run --rm -v "$PWD:/work" "$OSV_SCANNER" scan source "${args[@]}" --format json > osv.json
           code=$?

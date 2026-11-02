@@ -162,3 +162,13 @@ def test_sbom_summary_counts_kinds_and_distribution():
         {"purl": "pkg:deb/debian/libc6@2.41?arch=amd64&distro=debian-13"}, {"name": "sarcade-web"},
     ]})
     assert line == "SBOM : 4 composants (pypi 2, deb 1, sans purl 1) ; distribution : debian-13 1"
+
+
+def test_debian_point_release_cut_for_osv():
+    spec = importlib.util.spec_from_file_location("osv_input", ROOT / "tool" / "security" / "osv_input.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    doc = {"components": [{"purl": "pkg:deb/debian/libc6@2.41-12?arch=amd64&distro=debian-13.7"},
+                          {"purl": "pkg:deb/debian/zlib1g@1.3?distro=debian-13"}, {"purl": "pkg:pypi/x@1"}]}
+    assert module.normalize(doc) == 1
+    assert doc["components"][0]["purl"] == "pkg:deb/debian/libc6@2.41-12?arch=amd64&distro=debian-13"
