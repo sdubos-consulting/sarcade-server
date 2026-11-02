@@ -5,7 +5,18 @@ Bascule le serveur du NAS sur une branche en une commande : sauvegarde de la bas
 
 Utilisation : `sarcade-switch main`, `sarcade-switch feat/aprs`, `sarcade-switch --status`, `sarcade-switch --list`.
 
-Sauvegardes : `/volume1/docker/sarcade/sauvegardes/`. Réglages par variables d'environnement (`SARCADE_ROOT`, `SARCADE_DB_SERVICE`…), valeurs par défaut adaptées au DS1825+.
+## Client web à jour
+L'image du serveur vérifie elle-même, à chaque construction, la dernière publication du client web (`web-dev` de `sarcade-app`) : une reconstruction normale prend le nouveau client s'il y en a un, et garde le cache sinon. Plus besoin de `SARCADE_WEB_CACHEBUST` (gardé seulement pour forcer à la main).
+
+Mise à jour manuelle sur le NAS (en root), serveur et client web :
+```
+sarcade-switch main
+```
+Client web seul, sans toucher au code du serveur :
+```
+cd /volume1/docker/sarcade && docker compose build server && docker compose up -d server && sleep 20 && curl -fsS http://localhost:8000/version.json
+```
+Résultat attendu : `{"app_name":…,"version":…,"build_number":"…"}` avec le numéro de la dernière publication `web-dev` (le même que celui affiché par le client web). Si rien n'a été publié depuis la construction précédente, Docker garde son cache et la construction ne prend que quelques secondes. `sarcade-switch` finit par `Terminé` et `Santé : {"status":"ok"…}`.
 
 ## sarcade-autoupdate
 Met le NAS à jour tout seul depuis GitHub, toutes les 5 minutes (Planificateur de tâches de DSM) :

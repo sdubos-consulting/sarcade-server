@@ -1,33 +1,35 @@
-"""Downloads the SARCADE web client into the image (Docker build step).
+"""Installs the SARCADE web client into the image (Docker build step).
 
-Non-fatal: without network or release, the image still builds and the
-server simply does not serve the web client (the API is unaffected).
+The archive is downloaded by the ``ADD`` of the Dockerfile ("web" stage),
+which invalidates the build cache whenever a new client is published.
+Non-fatal: without archive (``SARCADE_WEB=none``) or with a broken one, the
+image still builds and the server simply does not serve the web client (the
+API is unaffected).
 """
-import io
 import sys
 import tarfile
-import urllib.request
 from pathlib import Path
 
 
-def main(url: str, target: str) -> int:
-    if not url:
-        print("web client: no URL, skipped")
+def main(archive: str, target: str) -> int:
+    source = Path(archive) if archive else None
+    if source is None or not source.is_file():
+        print("web client: no archive, skipped (API only)")
         return 0
     dest = Path(target)
     try:
-        with urllib.request.urlopen(url, timeout=60) as response:
-            data = response.read()
-        with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as archive:
+        with tarfile.open(source, mode="r:gz") as tar:
             dest.mkdir(parents=True, exist_ok=True)
-            archive.extractall(dest, filter="data")
+            tar.extractall(dest, filter="data")
     except Exception as exc:  # noqa: BLE001 - any failure leaves the API usable
         print(f"web client: not embedded ({exc})")
         return 0
     if not (dest / "index.html").is_file():
         print("web client: archive has no index.html, not served")
         return 0
-    print(f"web client: embedded in {dest}")
+    version = dest / "version.json"
+    detail = f", {version.read_text(encoding='utf-8').strip()}" if version.is_file() else ""
+    print(f"web client: embedded in {dest}{detail}")
     return 0
 
 

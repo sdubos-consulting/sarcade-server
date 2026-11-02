@@ -1,3 +1,15 @@
+# Web client (browsers, ChromeOS PWA) served at "/", from the web-dev
+# pre-release of sarcade-app. ADD checks the URL at every build and keeps its
+# cache only while the published archive is unchanged: a new publication is
+# picked up by a plain build, without --no-cache nor SARCADE_WEB_CACHEBUST.
+# SARCADE_WEB=none: image without web client (API only, nothing downloaded).
+ARG SARCADE_WEB=release
+FROM scratch AS web-none
+FROM scratch AS web-release
+ARG SARCADE_WEB_URL=https://github.com/sdubos-consulting/sarcade-app/releases/download/web-dev/sarcade-web.tar.gz
+ADD ${SARCADE_WEB_URL} /sarcade-web.tar.gz
+FROM web-${SARCADE_WEB} AS web
+
 FROM python:3.15-slim
 
 WORKDIR /app
@@ -17,12 +29,14 @@ RUN pip install --no-cache-dir --no-deps -e .
 ARG SARCADE_VERSION=""
 ENV SARCADE_VERSION=${SARCADE_VERSION}
 
-# Web client (browsers, ChromeOS PWA) served at "/". Empty URL = API only.
-# Change SARCADE_WEB_CACHEBUST to fetch a newer client without --no-cache.
-ARG SARCADE_WEB_URL=https://github.com/sdubos-consulting/sarcade-app/releases/download/web-dev/sarcade-web.tar.gz
+# Web client, downloaded by the "web" stage above. SARCADE_WEB_CACHEBUST:
+# manual forcing of this step (any new value), normally useless.
 ARG SARCADE_WEB_CACHEBUST=0
 COPY docker/fetch_web_client.py /tmp/fetch_web_client.py
-RUN echo "cachebust ${SARCADE_WEB_CACHEBUST}" && python /tmp/fetch_web_client.py "$SARCADE_WEB_URL" /app/web && rm /tmp/fetch_web_client.py
+RUN --mount=type=bind,from=web,target=/tmp/web-src \
+    echo "cachebust ${SARCADE_WEB_CACHEBUST}" \
+    && python /tmp/fetch_web_client.py /tmp/web-src/sarcade-web.tar.gz /app/web \
+    && rm /tmp/fetch_web_client.py
 ENV SARCADE_WEB_ROOT=/app/web
 
 EXPOSE 8000
