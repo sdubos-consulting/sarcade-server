@@ -591,7 +591,8 @@ def _apply_operation(db: Session, op: SyncOperationIn, now: datetime,
 
 
 def _apply_message_delete(db: Session, op: SyncOperationIn, now: datetime, pco: bool) -> tuple[str, int, dict | None]:
-    """Deletion for everyone: the author during 2 days, the PCO always."""
+    """Deletion for everyone: the author during 2 days, the PCO always;
+    never a distress message nor a move order (lot 21)."""
     existing = db.scalar(select(SyncOperationRow).where(SyncOperationRow.operation_id == op.operation_id))
     if existing is not None:
         return "duplicate", existing.seq, None
@@ -603,9 +604,12 @@ def _apply_message_delete(db: Session, op: SyncOperationIn, now: datetime, pco: 
     actor = str(op.payload.get("deleted_by") or "")[:64]
     ok, as_pco = msg_deletion.allowed(row, actor, pco or groups.is_pco(actor), now)
     if not ok:
-        raise SyncRejected("suppression refusée : réservée à l'auteur pendant 2 jours, ou au PCO", journal=dict(
+        kept = msg_deletion.protected(row)
+        raise SyncRejected("suppression refusée : message de détresse ou ordre, jamais supprimé pour tous" if kept
+                           else "suppression refusée : réservée à l'auteur pendant 2 jours, ou au PCO", journal=dict(
             category="rights", action="write_refused", outcome="refused", actor=actor or None,
-            event_id=op.event_id, details={"object_type": "message", "reason": "delete_not_allowed",
+            event_id=op.event_id, details={"object_type": "message",
+                                           "reason": "delete_protected" if kept else "delete_not_allowed",
                                            "message_id": row.id}))
     data = msg_deletion.apply(db, row, actor, as_pco, now)
     status, cursor = record_operation(

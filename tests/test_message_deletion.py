@@ -130,3 +130,50 @@ def test_photos_of_a_deleted_message_are_no_longer_served(client, db, tmp_path):
     _delete(client, "m5", "TEL-01")
     assert client.get("/api/v0.1/events/e1/files/f1/content").status_code == 410
     assert client.get("/api/v0.1/events/e1/messages").json()[0]["attachments"] == []
+
+
+def _send_text(client, mid, body, priority="routine", sender="TEL-01", recipients=None):
+    when = datetime.now(UTC)
+    p = {"id": mid, "event_id": "e1", "sender_id": sender, "recipient_ids": recipients or [], "priority": priority,
+         "body": body, "created_at": _iso(when), "attachments": []}
+    op = {"operation_id": f"op-{mid}", "event_id": "e1", "object_id": mid, "object_type": "message",
+          "action": "create", "client_time": _iso(when), "payload": p}
+    return client.post("/api/v0.1/sync", json=[op]).json()[0]
+
+
+def test_distress_and_orders_are_never_deleted_for_everyone():
+    """Lot 21 (2 Nov 2026): distress, its end and move orders stay, even for the PCO."""
+    now = datetime(2026, 11, 2, 12, tzinfo=UTC)
+
+    def row(body, priority="routine"):
+        return SimpleNamespace(sender_id="TEL-01", created_at=now, body=body, priority=priority)
+
+    kept = [row("🆘 DÉTRESSE — TEL-01 — position 48.80000, 2.10000", "immediate"),
+            row("Besoin d'aide", "distress"),
+            row("Fin de détresse — TEL-01", "urgent"),
+            row("End of distress — TEL-01", "urgent"),
+            row("📍 Ordre de déplacement : rejoindre « P2 » (48.80000, 2.10000)", "immediate")]
+    for r in kept:
+        assert deletion.protected(r)
+        assert deletion.allowed(r, "TEL-01", False, now) == (False, False)
+        assert deletion.allowed(r, "PCO", True, now) == (False, False)
+    # An urgent or immediate message without the marks stays deletable.
+    for r in (row("Véhicule repéré", "immediate"), row("🆘 exercice", "urgent"), row("📍 P2")):
+        assert not deletion.protected(r)
+        assert deletion.allowed(r, "TEL-01", False, now) == (True, False)
+
+
+def test_distress_and_order_deletion_refused_by_sync(client, db):
+    _send_text(client, "d1", "🆘 DÉTRESSE — TEL-01 — position 48.80000, 2.10000", "immediate")
+    _send_text(client, "d2", "Fin de détresse — TEL-01", "urgent")
+    _send_text(client, "o1", "📍 Ordre de déplacement : rejoindre « P2 » (48.80000, 2.10000)", "immediate",
+               sender="PCO", recipients=["TEL-01"])
+    for mid, actor in (("d1", "TEL-01"), ("d1", "PCO"), ("d2", "TEL-01"), ("o1", "PCO")):
+        r = _delete(client, mid, actor, n=actor)
+        assert r["status"] == "rejected" and "détresse ou ordre" in r["reason"]
+    assert all(db.get(MessageRow, m).deleted_at is None for m in ("d1", "d2", "o1"))
+    # The others are still deleted one by one (selection of several messages).
+    _send_text(client, "r1", "Véhicule repéré")
+    _send_text(client, "r2", "En place")
+    assert _delete(client, "r1", "TEL-01")["status"] == "accepted"
+    assert _delete(client, "r2", "TEL-01")["status"] == "accepted"

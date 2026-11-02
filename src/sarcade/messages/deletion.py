@@ -8,6 +8,11 @@ it; the PCO may delete any message, at any time. Everyone then sees
 message row, for the PCO and the administrators only: it is removed from
 the change feed and the logbook shown to the operators, and its photos can
 no longer be downloaded by them.
+
+Distress messages (« 🆘 … », priority ``distress``, their « Fin de détresse »)
+and move orders (« 📍 Ordre de déplacement … ») are never deleted for
+everyone, not even by the PCO (lot 21, 2 Nov 2026): « Supprimer pour moi »
+stays possible on the device.
 """
 from datetime import UTC, datetime, timedelta
 
@@ -25,8 +30,24 @@ def _aware(value: datetime) -> datetime:
     return value if value.tzinfo else value.replace(tzinfo=UTC)
 
 
+DISTRESS_END_PREFIXES = ("fin de détresse", "end of distress")
+MOVE_ORDER_PREFIX = "📍 Ordre de déplacement"
+
+
+def protected(row: MessageRow) -> bool:
+    """Distress, end of distress and move orders: kept for everyone."""
+    body = str(getattr(row, "body", "") or "").strip()
+    priority = getattr(row, "priority", "") or ""
+    if priority == "distress" or (priority == "immediate" and body.startswith("🆘")):
+        return True
+    return body.lower().startswith(DISTRESS_END_PREFIXES) or body.startswith(MOVE_ORDER_PREFIX)
+
+
 def allowed(row: MessageRow, actor: str, pco: bool, now: datetime) -> tuple[bool, bool]:
-    """(allowed, as_pco). The PCO deletes anything; the author during 2 days."""
+    """(allowed, as_pco). The PCO deletes anything; the author during 2 days.
+    Distress messages and move orders: nobody."""
+    if protected(row):
+        return False, False
     if pco:
         return True, True
     if actor and actor == row.sender_id and now - _aware(row.created_at) <= AUTHOR_DELAY:
