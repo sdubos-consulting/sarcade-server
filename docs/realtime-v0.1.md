@@ -16,6 +16,7 @@ Connexion : /api/v0.1/events/{event_id}/ws
 - poi.created
 - poi.updated (nom modifié)
 - poi.deleted (point supprimé)
+- move_order.upserted porte aussi l'heure d'arrivée estimée d'un ordre accepté (`eta`, `eta_updated_at`, `eta_by`, `eta_remaining_m`, lot 24, voir `routes-v0.1.md`)
 
 Le flux est strictement isolé par event_id. À ce stade, l'authentification WebSocket sera ajoutée avec la couche IAM.
 
