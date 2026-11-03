@@ -52,9 +52,26 @@ DEFAULT_SETTINGS: dict = {
     # → « multi » (Plusieurs balises) or « single » (Une seule balise);
     # absent: « auto ». Set by any operator of the event (zone_mode route).
     "zone_modes": {},
+    # Mission or exercise SATER (lot 24, card « Android Auto : Signal entendu
+    # ici »): shows the « Signal entendu ici » button of the car. Set by the
+    # PCO; true at creation for an event of kind « sater ». ADRASEC module.
+    "sater": False,
+    # Messages sent in one touch from the car (card « Android Auto : messages
+    # types en un appui », lot 24): 4 at most, each with its priority
+    # (« routine » or « urgent », never distress). Set by the PCO.
+    "car_quick_messages": [
+        {"text": "Bien reçu", "priority": "routine"},
+        {"text": "J'arrive", "priority": "routine"},
+        {"text": "Besoin d'aide", "priority": "urgent"},
+        {"text": "Retard", "priority": "routine"},
+    ],
 }
 
-_BOOL_KEYS = {"low_bandwidth", "tracking_required", "aprs_tx_rf"}
+MAX_CAR_QUICK_MESSAGES = 4
+CAR_QUICK_MESSAGE_MAX = 40
+CAR_QUICK_PRIORITIES = ("routine", "urgent")
+
+_BOOL_KEYS = {"low_bandwidth", "tracking_required", "aprs_tx_rf", "sater"}
 _LIST_KEYS = {"aprs_groups", "aprs_callsigns", "quick_messages"}
 _COORD_KEYS = {"weather_lat": 90, "weather_lon": 180}
 _INT_RANGES = {
@@ -71,7 +88,8 @@ class InvalidSettings(ValueError):
 
 def merged(stored: dict | None) -> dict:
     """Stored settings completed with the defaults (older events)."""
-    result = {k: (list(v) if isinstance(v, list) else dict(v) if isinstance(v, dict) else v)
+    result = {k: ([dict(x) if isinstance(x, dict) else x for x in v] if isinstance(v, list)
+                  else dict(v) if isinstance(v, dict) else v)
               for k, v in DEFAULT_SETTINGS.items()}
     result.update({k: v for k, v in (stored or {}).items() if k in DEFAULT_SETTINGS})
     return result
@@ -103,6 +121,8 @@ def apply_patch(stored: dict | None, patch: dict) -> dict:
                 raise InvalidSettings(str(exc)) from exc
         elif key == "zone_modes":
             value = clean_zone_modes(value)
+        elif key == "car_quick_messages":
+            value = clean_car_quick_messages(value)
         elif key == "basemap":
             if not (isinstance(value, str) and 1 <= len(value) <= 40):
                 raise InvalidSettings("invalid_value:basemap")
@@ -129,9 +149,10 @@ def apply_patch(stored: dict | None, patch: dict) -> dict:
     # APRS belongs to the ADRASEC module (31 Oct 2026): not set without it,
     # and the radio transmission stops when the module is turned off.
     if "adrasec" not in result["modules"]:
-        if any(k.startswith("aprs_") and v not in (None, False, []) for k, v in patch.items()):
+        if any((k.startswith("aprs_") or k == "sater") and v not in (None, False, []) for k, v in patch.items()):
             raise InvalidSettings("module_inactive:adrasec")
         result["aprs_tx_rf"] = False
+        result["sater"] = False
     if not (result["tracking_min_interval_s"] <= result["tracking_default_interval_s"]
             <= result["tracking_max_interval_s"]):
         raise InvalidSettings("inconsistent_tracking_bounds")
@@ -154,6 +175,32 @@ def clean_zone_modes(value) -> dict:
             raise InvalidSettings("invalid_value:zone_modes")
         if v != "auto":
             out[search_key(k)] = v
+    return out
+
+
+def clean_car_quick_messages(value) -> list[dict]:
+    """1 to 4 messages ``{"text", "priority"}`` (a plain text is a
+    « routine » message), texts of 1 to 40 characters without duplicates;
+    None gives back the default list."""
+    if value is None:
+        return [dict(x) for x in DEFAULT_SETTINGS["car_quick_messages"]]
+    if not isinstance(value, list) or not 1 <= len(value) <= MAX_CAR_QUICK_MESSAGES:
+        raise InvalidSettings("invalid_value:car_quick_messages")
+    out, seen = [], set()
+    for item in value:
+        if isinstance(item, str):
+            item = {"text": item}
+        if not isinstance(item, dict):
+            raise InvalidSettings("invalid_value:car_quick_messages")
+        text, priority = item.get("text"), item.get("priority", "routine")
+        if not isinstance(text, str) or not 1 <= len(text.strip()) <= CAR_QUICK_MESSAGE_MAX \
+                or priority not in CAR_QUICK_PRIORITIES:
+            raise InvalidSettings("invalid_value:car_quick_messages")
+        text = " ".join(text.split())
+        if text.lower() in seen:
+            raise InvalidSettings("invalid_value:car_quick_messages")
+        seen.add(text.lower())
+        out.append({"text": text, "priority": priority})
     return out
 
 
@@ -238,6 +285,13 @@ def logbook_summaries(old: dict | None, new: dict) -> list[str]:
                      if after["aprs_tx_callsign"] else "APRS : indicatif d'émission radio locale retiré")
     if before["quick_messages"] != after["quick_messages"]:
         lines.append(f"Messages prédéfinis : {len(after['quick_messages'])} message(s) proposé(s)")
+    if before["sater"] != after["sater"]:
+        lines.append("Mission ou exercice SATER : bouton « Signal entendu ici » proposé" if after["sater"]
+                     else "Mission ou exercice SATER : bouton « Signal entendu ici » retiré")
+    if before["car_quick_messages"] != after["car_quick_messages"]:
+        texts = ", ".join(m["text"] + (" (urgent)" if m["priority"] == "urgent" else "")
+                          for m in after["car_quick_messages"])
+        lines.append(f"Messages types de la voiture : {texts}")
     if before["position_old_min"] != after["position_old_min"]:
         lines.append(f"Stations « anciennes » après {_duration(after['position_old_min'] * 60)} sans nouvelles")
     if (before["weather_lat"], before["weather_lon"]) != (after["weather_lat"], after["weather_lon"]):

@@ -52,6 +52,16 @@ def for_kind(kind: str | None) -> list[str]:
     return list(TEMPLATES.get((kind or "").strip().lower(), DEFAULT_MODULES))
 
 
+# Event models of a SATER mission or exercise (lot 24): the setting « sater »
+# is on at creation. The models « mission SATER » / « exercice SATER » of
+# the ADRASEC card, step 2, will join this set.
+SATER_KINDS = {"sater"}
+
+
+def is_sater_kind(kind: str | None) -> bool:
+    return (kind or "").strip().lower() in SATER_KINDS
+
+
 def enabled(settings: dict | None, module: str) -> bool:
     """True when [module] is on for an event (merged settings or stored)."""
     mods = (settings or {}).get("modules")

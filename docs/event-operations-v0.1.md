@@ -19,6 +19,8 @@ Spécifications : notes « Synchronisation client-serveur » et « Suivi de posi
 | `tracking_min_interval_s` / `tracking_max_interval_s` | 10 / 600 | bornes fixées par le PCO |
 
 | `zone_modes` | `{}` | zone probable par signal recherché : clé du signal (`search_key` : apostrophes unifiées, accents et casse ignorés) → `multi` (Plusieurs balises) ou `single` (Une seule balise) ; absent = `auto` |
+| `sater` | `false` (`true` à la création d'un événement de type `sater` avec le module ADRASEC) | mission ou exercice SATER : l'application affiche le bouton « Signal entendu ici » (lot 24). Module ADRASEC requis (422 `module_inactive:adrasec` sinon) ; remis à `false` quand le module est retiré |
+| `car_quick_messages` | « Bien reçu », « J'arrive », « Besoin d'aide » (urgent), « Retard » | messages types envoyés d'un appui depuis la voiture (lot 24) : liste de **1 à 4** objets `{"text", "priority"}`, `text` de 1 à 40 caractères (espaces réduits, sans doublon, casse ignorée), `priority` = `routine` (défaut) ou `urgent` (jamais détresse) ; une chaîne seule vaut `{"text": …, "priority": "routine"}` ; `null` remet la liste par défaut ; 422 `invalid_value:car_quick_messages` sinon. Distinct de `quick_messages` (messages prédéfinis du téléphone, 20 au plus) |
 
 `PUT /api/v0.1/events/{event_id}/zone-mode` (corps : `actor_id`, `search`, `mode` = `auto`, `multi` ou `single`) change le mode d'**un** signal ; ouvert à **tout opérateur** de l'événement (pas de droit PCO), depuis la fenêtre d'une zone ou la fiche d'un relevé. Main courante « Zone probable « … » : Plusieurs balises », diffusion `event.settings.updated` ; 422 si le mode est inconnu, 409 après la fin de l'événement.
 

@@ -222,7 +222,7 @@ def _map_layers(db: Session, event_id: str, opts: dict, fr: str | None, rr: str 
     # zones: part of the revision, so the TV gets them again at once.
     out["features_rev"] = _stamp(count, last, layers["drawings"], layers["bearings"], sorted((zone_modes or {}).items()))
     if out["features_rev"] != fr:
-        drawings, bearings = [], []
+        drawings, bearings, listening = [], [], []
         if layers["drawings"] or layers["bearings"]:
             rows = db.scalars(select(MapFeatureRow).where(MapFeatureRow.event_id == event_id,
                                                           MapFeatureRow.deleted_at.is_(None))
@@ -233,9 +233,14 @@ def _map_layers(db: Session, event_id: str, opts: dict, fr: str | None, rr: str 
                     b = tv.tv_bearing(f)
                     if b:
                         bearings.append(b)
+                elif r.kind == "listening":
+                    li = tv.tv_listening(f)
+                    if li:
+                        listening.append(li)
                 else:
                     drawings.append(tv.tv_drawing(f))
         out["drawings"], out["bearings"] = drawings, tv.unify_searches(bearings)
+        out["listening"] = listening
     cats = [c for c, on in (("HIGH_POINT", layers["highpoints"]), ("RELAY", layers["relays"])) if on]
     count, last = (db.execute(select(func.count(), func.max(ReferenceSiteRow.imported_at))
                               .where(ReferenceSiteRow.status == "active", ReferenceSiteRow.category.in_(cats))).one()
@@ -283,7 +288,8 @@ def state(request: Request, fr: str | None = Query(None, max_length=32), rr: str
     layers = _map_layers(db, event.id, tv.display_options(view), fr, rr, zone_modes)
     snap = tv.apply_view(snap, view, datetime.now(UTC), weather=_weather(db, event.id),
                          drawings=layers.get("drawings"), bearings=layers.get("bearings"),
-                         references=layers.get("references"), zone_modes=zone_modes)
+                         references=layers.get("references"), zone_modes=zone_modes,
+                         listening=layers.get("listening"))
     snap["features_rev"], snap["references_rev"] = layers["features_rev"], layers["references_rev"]
     # Traces chosen on the phone (1 Nov 2026).
     snap["traces"] = _traces(db, event.id, tv.display_options(view), snap["positions"])
@@ -802,7 +808,7 @@ $('wx').innerHTML=w&&w.temp_c!=null?'<span>'+Math.round(Number(w.temp_c))+'°</s
 $('sun').innerHTML=w&&w.sunrise&&w.sunset?'<b>↑</b> '+hm(w.sunrise)+'<br><b>↓</b> '+hm(w.sunset):'';}
 // Layers of the view: drawings, bearings, reference sites; sent again by
 // the server only when they changed (revisions fr / rr).
-let fr='',rr='',lastOp='',drawL,brgL,refL,dData=[],bData=[],rData=[],zData=[];
+let fr='',rr='',lastOp='',drawL,brgL,refL,dData=[],bData=[],rData=[],zData=[],lData=[];
 function argb(c){c=Number(c)>>>0;return{col:'#'+('00000'+(c&0xFFFFFF).toString(16)).slice(-6),a:((c>>>24)&255)/255||1};}
 function arrowHead(pts){const a=pts[pts.length-2],b=pts[pts.length-1],k=Math.cos(b[0]*Math.PI/180)||1;
 const dx=(b[1]-a[1])*k,dy=b[0]-a[0],h=Math.hypot(dx,dy)*0.2,t=Math.atan2(dy,dx);
@@ -837,6 +843,13 @@ const st={color:col,weight:3,opacity:op};
 if(cone>0)L.polygon([[b.lat,b.lon],dest(b.lat,b.lon,(b.azimuth_deg-cone+360)%360,len),dest(b.lat,b.lon,(b.azimuth_deg+cone)%360,len)],
 {color:col,weight:1,opacity:.35*op,fillColor:col,fillOpacity:.10*op,interactive:false}).addTo(brgL);
 L.circleMarker([b.lat,b.lon],Object.assign({},st,{radius:4,fillOpacity:op})).addTo(brgL);L.polyline([[b.lat,b.lon],end],st).addTo(brgL);}
+// Listening points SATER (lot 24): « signal entendu ici », without
+// azimuth; orange ring (exercise: dashed), short tick for the heading of
+// the vehicle, label with the time heard.
+for(const li of lData){const ll=[li.lat,li.lon],c='#FF9F1C';
+L.circleMarker(ll,{radius:9,color:c,weight:3,opacity:op,fillColor:c,fillOpacity:.25*op,dashArray:li.exercise?'5 4':null})
+.bindTooltip(esc((li.exercise?'EX · ':'')+'Écoute'+(li.heard_at?' '+hm(li.heard_at):'')),{permanent:true,direction:'top',className:'stl ap',opacity:op}).addTo(brgL);
+if(li.heading_deg!=null)L.polyline([ll,dest(li.lat,li.lon,li.heading_deg,120)],{color:c,weight:3,opacity:op,interactive:false}).addTo(brgL);}
 // Probable zone and crossings of each search, computed by the server.
 for(const z of zData){const col=col6(z.color);for(const c of z.crossings||[])L.circleMarker(c,{radius:4,color:col,weight:1,opacity:op,fillOpacity:op}).addTo(brgL);
 if(z.lat==null)continue;
@@ -857,7 +870,8 @@ const real=zData.some(z=>z.lat!=null&&!z.exercise),exo=zData.some(z=>z.lat!=null
 $('legend').innerHTML=keys.map(k=>'<div><i style="background:'+by[k].color+'"></i>'+(by[k].ex?'<span class="ex">EX</span>':'')+esc(k||'Sans signal')+'</div>').join('')
 +(real?'<div><i class="zr" style="border-color:#ff4d5e"></i>Zone probable (recherche réelle)</div>':'')
 +(exo?'<div><i class="zr zx" style="border-color:#ff9f1c"></i>Zone d’exercice</div>':'')
-+(out?'<div><i class="gx"></i>Relevé écarté</div>':'');$('legend').style.display=keys.length?'block':'none';placeScale();}
++(out?'<div><i class="gx"></i>Relevé écarté</div>':'')
++(lData.length?'<div><i class="zr" style="border-color:#FF9F1C"></i>Point d’écoute</div>':'');$('legend').style.display=keys.length||lData.length?'block':'none';placeScale();}
 // The scale stays just above the legend, whatever its height (or at the
 // bottom when the legend is hidden): never covered.
 function placeScale(){const c=map&&map.getContainer().querySelector('.leaflet-bottom.leaflet-left'),lg=$('legend');if(!c)return;
@@ -961,7 +975,7 @@ if(typeof s.aircraft_now==='number')acOff=s.aircraft_now*1000-Date.now();acTime=
 const so=s.options||{},ak=JSON.stringify([s.aircraft||null,s.aircraft_tracks||{},so.aircraft_low_ft,so.aircraft_high_ft,so.aircraft_bands,so.aircraft_ground,so.aircraft_labels,so.aircraft_followed]);
 if(ak!==layers.ak){layers.ak=ak;aData=s.aircraft||[];acTracks=s.aircraft_tracks||{};acOpt=so;acOn=Array.isArray(s.aircraft);drawAircraft();}acDiag();
 const tk=JSON.stringify(s.traces||[]);if(tk!==layers.tk||nz(o.traces,1)!==trOp){layers.tk=tk;tData=s.traces||[];trOp=nz(o.traces,1);drawTraces();}
-if(s.drawings)dData=s.drawings;if(s.bearings){bData=s.bearings;zData=s.zones||[];}if(s.references)rData=s.references;
+if(s.drawings)dData=s.drawings;if(s.bearings){bData=s.bearings;zData=s.zones||[];lData=s.listening||[];}if(s.references)rData=s.references;
 if(s.drawings||s.bearings||key!==lastOp){drawFeatures(nz(o.draw,1));drawBearings(nz(o.brg,1));}
 if(s.references||key!==lastOp)drawRefs(o);lastOp=key;fr=s.features_rev||'';rr=s.references_rev||'';
 // One opacity per layer: operators and APRS apart; the label follows the
