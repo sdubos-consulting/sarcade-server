@@ -221,6 +221,11 @@ def validate_move_order(payload: dict, *, event_id: str, object_id: str) -> dict
                         "label": _text(dest.get("label"), "destination", 120)},
         "note": _text(payload.get("note"), "note", 200),
     })
+    # « Terminé, disponible » of the operator on an arrived order (lot 27,
+    # sarcade.events.order_status); ignored on any other state.
+    finished = payload.get("finished_at")
+    if finished and status == "arrived":
+        data["finished_at"] = parse_time(finished).astimezone(UTC).isoformat().replace("+00:00", "Z")
     return data
 
 

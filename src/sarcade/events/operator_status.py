@@ -57,6 +57,9 @@ def _utc(t: datetime | None) -> datetime | None:
     return t.replace(tzinfo=UTC) if t.tzinfo is None else t.astimezone(UTC)
 
 
+as_utc = _utc
+
+
 def apply(device, status: str | None, at: datetime) -> bool:
     """Sets the status of [device] when [at] is newer than the stored one.
     Returns True when it changed; the same status again keeps its first
@@ -78,5 +81,8 @@ def state(device) -> dict:
             "operator_status_at": at.isoformat().replace("+00:00", "Z") if at else None}
 
 
-def logbook_summary(who: str, status: str | None) -> str:
-    return f"Statut de {who} : {LABELS[status]}" if status else f"Statut de {who} retiré"
+def logbook_summary(who: str, status: str | None, reason: str | None = None) -> str:
+    """« Statut de F4ABC : En route », and why when the server set it
+    (lot 27: « Statut de F4ABC : En route, ordre accepté »)."""
+    text = f"Statut de {who} : {LABELS[status]}" if status else f"Statut de {who} retiré"
+    return f"{text}, {reason}" if reason else text

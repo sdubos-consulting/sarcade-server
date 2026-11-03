@@ -17,7 +17,7 @@ from sarcade.api.app import app
 from sarcade.api.deps import get_db
 from sarcade.db.base import Base
 from sarcade.db.models import (ClientDeviceRow, DeviceRow, EventRow, LogbookRow, SecurityEventRow,
-                               ServerSettingRow)
+                               ServerSettingRow, SyncOperationRow)
 from sarcade.events import contacts
 from sarcade.features import service as features
 
@@ -34,7 +34,7 @@ T0 = datetime(2026, 10, 29, 10, 0, tzinfo=UTC)
 def db():
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(engine, tables=[t.__table__ for t in (
-        EventRow, DeviceRow, LogbookRow, ServerSettingRow, ClientDeviceRow, SecurityEventRow)])
+        EventRow, DeviceRow, LogbookRow, ServerSettingRow, ClientDeviceRow, SecurityEventRow, SyncOperationRow)])
     session = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)()
     session.add(EventRow(id="e1", name="Exercice", kind="exercise", status="active", created_at=T0, version=0,
                          settings={"sync_alert_minutes": 5}))

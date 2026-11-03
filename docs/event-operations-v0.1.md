@@ -57,11 +57,41 @@ Carte « Android Auto : statut en un appui ». Un statut par appareil de l'évé
 - **Règle** : le plus récent (`at`) gagne ; un statut parti en retard ne remplace jamais un statut plus récent. Le même statut renvoyé ne change rien (son heure reste celle du premier choix : « depuis 8 h 10 »).
 - **Temps réel** : `operator.status` avec `{"event_id", "device_id", "operator_status", "operator_status_at"}`, seulement quand le statut change.
 - **Lecture** : `GET /api/v0.1/events/{event_id}/operator-statuses` (appareils qui ont un statut) ; `GET …/positions/latest` et `GET …/devices` (et la diffusion `device.updated`) portent aussi `operator_status` et `operator_status_at` (à ne pas confondre avec `status` des appareils, qui reste l'état du contact : `ok`, `late`, `unknown`).
-- **Main courante** (`kind = "operator_status"`) : « Statut de <libellé, indicatif ou appareil> : En route », « Statut de … retiré ».
+- **Main courante** (`kind = "operator_status"`) : « Statut de <libellé, indicatif ou appareil> : En route », « Statut de … retiré » ; quand le serveur le pose (lot 27), suivi de la raison : « Statut de … : En route, ordre accepté ».
 - **TV** : pastille de couleur devant le nom de l'opérateur (`positions[].operator_status` de l'état).
 - Stockage : colonnes `devices.operator_status` et `devices.operator_status_at` (migration `0028`).
 
 Vérification : `tests/test_operator_status.py`, `demo/verify_operator_status.py` (CI).
+
+### « Disponible » par défaut (lot 27, 3 novembre 2026)
+
+Carte « Statut de l'opérateur : « Disponible » par défaut » (choix validés le 3 novembre 2026, 17 h 21).
+
+- Au **heartbeat** d'un appareil qui n'a **jamais eu** de statut dans l'événement (`operator_status_at` vide), le serveur pose **`disponible`** (une seule fois) : main courante « Statut de … : Disponible, par défaut », diffusion `operator.status` (et `device.updated`), flux `…/sync/changes`.
+- **Jamais d'écrasement** : un statut déjà choisi, « Aucun statut » compris, n'est jamais remplacé (relance de l'application, nouvel heartbeat).
+- **Changement d'appareil d'une même personne** (même indicatif sans SSID, réglé dans Paramètres › Profil et envoyé par le heartbeat) : le nouvel appareil reprend le statut le plus récent de la personne (« Statut de … : Pause, repris de F4ABC-9 ») ; si elle a choisi « Aucun statut », rien n'est posé.
+- **Hors connexion** : rien n'est posé tant que le heartbeat annonce des opérations en attente (`pending_count` > 0) : un statut choisi hors connexion est peut-être dans la file d'envoi.
+- Rien dans un événement clos.
+
+### Statut qui suit les ordres de déplacement (lot 27, 3 novembre 2026)
+
+Carte « Ordres de déplacement : statut mis à jour automatiquement ». La règle est **sur le serveur**, appliquée quand l'ordre (`move_order` synchronisé) change d'état : la même pour le téléphone, le PC et la voiture, quelle que soit l'heure d'arrivée de la réponse (file d'envoi).
+
+| Événement de l'ordre | Statut posé | Main courante |
+|---|---|---|
+| `accepted` | `en_route` | « Statut de … : En route, ordre accepté » |
+| `arrived` (bouton, ou arrivée détectée confirmée) | `sur_place` | « …: Sur place, arrivée sur zone » |
+| `refused` ou `cancelled` | statut d'avant l'ordre | « …: Disponible, ordre annulé » (« … retiré, ordre refusé » s'il n'y en avait pas) |
+| « Terminé, disponible » (`finished_at` posé sur un ordre `arrived`) | `disponible` | « …: Disponible, mission terminée » |
+
+- **Appareils concernés** : l'appareil visé (`target_id`) et, quand la réponse vient d'un autre terminal de la même personne (lot 20), ce terminal aussi. Un appareil jamais vu dans l'événement n'a pas de statut posé.
+- **Statut d'avant** : mémorisé sur l'ordre à la première réponse (`operator_status_before`, `{device_id: statut | null}`), gardé par le serveur (les clients ne l'envoient pas) ; effacé quand l'ordre est refusé, annulé ou terminé. Un refus direct (sans acceptation) ne change rien.
+- **Changement manuel** : le statut automatique porte l'heure de la réponse (`updated_at` de l'ordre) ; la règle « le plus récent gagne » garde un statut choisi à la main après elle, jusqu'au prochain événement de l'ordre. Une note modifiée par le PCO n'est pas un événement de l'ordre.
+- **`finished_at`** : champ synchronisé de l'ordre, accepté seulement quand il est `arrived` (ignoré sinon), gardé par le serveur tant qu'il le reste. L'ordre reste `arrived` (anciennes applications inchangées).
+- Diffusion `operator.status` par appareil changé, flux `…/sync/changes` (`operator_status`).
+- Non traité : un ordre **retiré de la carte** (suppression) ne change pas le statut.
+
+Vérification : `tests/test_order_status.py`, `demo/verify_order_status.py` (CI).
 
 ## Signaux par défaut du relevé
 
