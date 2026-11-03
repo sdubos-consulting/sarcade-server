@@ -16,7 +16,7 @@ from sarcade.api import directory as directory_api
 from sarcade.api.app import app
 from sarcade.api.deps import get_db
 from sarcade.db.base import Base
-from sarcade.db.models import (AuthDeviceRow, HabilitationRow, LoginCodeRow, OrgGroupGroupRow, OrgGroupRow,
+from sarcade.db.models import (AuthDeviceRow, EventInvitedGroupRow, EventRow, HabilitationRow, LoginCodeRow, OrgGroupGroupRow, OrgGroupRow,
                                OrgGroupUserRow, OrgInvitationRow, SecurityEventRow, ServerSettingRow, UserRow)
 from sarcade.directory import DirectoryError, PUBLIC_ID, SERVER_ADMINS_ID, graph as graphs, rights as R, service
 from sarcade.licensing import core, issue
@@ -29,7 +29,7 @@ def _bigint_sqlite(type_, compiler, **kw):
 
 NOW = datetime(2026, 11, 3, 14, 0, tzinfo=UTC)
 TABLES = (UserRow, LoginCodeRow, AuthDeviceRow, SecurityEventRow, ServerSettingRow, OrgGroupRow, OrgGroupUserRow,
-          OrgGroupGroupRow, OrgInvitationRow, HabilitationRow)
+          OrgGroupGroupRow, OrgInvitationRow, HabilitationRow, EventRow, EventInvitedGroupRow)
 ROOT, KEY = Ed25519PrivateKey.generate(), Ed25519PrivateKey.generate()
 
 

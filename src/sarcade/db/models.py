@@ -33,6 +33,9 @@ class EventRow(Base):
     # Operational settings set by the PCO (sarcade.events.settings).
     settings: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Organising group (lot 26): its organisers are the PCO of the event,
+    # its licence applies; visible to the invited groups only.
+    organizer_group_id: Mapped[str | None] = mapped_column(String(64), index=True)
 
 
 class TeamRow(Base):
@@ -530,3 +533,13 @@ class HabilitationRow(Base):
     until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     granted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     granted_by: Mapped[str | None] = mapped_column(String(64))
+
+
+class EventInvitedGroupRow(Base):
+    """Group invited to an event (lot 26): its members see the event.
+    Inviting « Public » opens the event to every device."""
+    __tablename__ = "event_invited_groups"
+    event_id: Mapped[str] = mapped_column(ForeignKey("events.id"), primary_key=True)
+    group_id: Mapped[str] = mapped_column(ForeignKey("org_groups.id"), primary_key=True, index=True)
+    invited_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    invited_by: Mapped[str | None] = mapped_column(String(64))

@@ -8,6 +8,10 @@ class EventCreate(BaseModel):
     summary: str | None = Field(default=None, max_length=1000)
     # Modules of the event (sarcade.modules); None: those of its kind.
     modules: list[str] | None = None
+    # Organising group (lot 26); None: the only group the caller organises,
+    # else the default one of the server (ADRASEC 78 after the migration).
+    organizer_group_id: str | None = Field(default=None, max_length=64)
+    invited_group_ids: list[str] | None = Field(default=None, max_length=200)
 
 
 class EventOut(EventCreate):

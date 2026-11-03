@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -73,6 +73,7 @@ def event_dict(row: EventRow) -> dict:
         "id": row.id, "name": row.name, "kind": row.kind, "status": row.status,
         "summary": row.summary, "created_at": utc(row.created_at), "version": row.version,
         "ended_at": utc(row.ended_at), "settings": event_settings.merged(row.settings),
+        "organizer_group_id": row.organizer_group_id,
     }
 
 
@@ -145,18 +146,25 @@ def event_summary(row: EventRow) -> dict:
         "id": row.id, "name": row.name, "kind": row.kind,
         "status": "closed" if closed else row.status,
         "created_at": utc(row.created_at), "ended_at": utc(row.ended_at),
+        "organizer_group_id": row.organizer_group_id,
     }
 
 
 @router.get("/events")
-def list_events(include_closed: bool = Query(False), limit: int = Query(200, ge=1, le=1000),
+def list_events(request: Request, include_closed: bool = Query(False), limit: int = Query(200, ge=1, le=1000),
                 db: Session = Depends(get_db)):
-    """Events of this server, newest first; closed events are hidden unless
-    asked for. Read rights will follow ADR-002 once identity is in place."""
+    """Events of this server the caller sees (invited groups, organisers,
+    lot 26), newest first; closed events are hidden unless asked for."""
     stmt = select(EventRow)
     if not include_closed:
         stmt = stmt.where(EventRow.ended_at.is_(None), EventRow.status != "closed")
     rows = db.scalars(stmt.order_by(EventRow.created_at.desc()).limit(limit)).all()
+    from sarcade import roles
+    if roles.directory_ready(db):
+        from sarcade.accounts.caller import caller_of
+        from sarcade.directory import events as dir_events
+        caller = caller_of(request)
+        rows = [r for r in rows if dir_events.visible(db, caller, r)]
     return [event_summary(r) for r in rows]
 
 
