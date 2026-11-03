@@ -1,7 +1,7 @@
 # Temps réel et lecture des positions — v0.1
 
 ## REST
-- GET /api/v0.1/events/{event_id}/positions/latest
+- GET /api/v0.1/events/{event_id}/positions/latest (porte aussi `operator_status` et `operator_status_at` de l'appareil, lot 24)
 - GET /api/v0.1/events/{event_id}/devices/{device_id}/positions
 - GET /api/v0.1/events/{event_id}/pois
 - POST /api/v0.1/events/{event_id}/pois
@@ -16,6 +16,7 @@ Connexion : /api/v0.1/events/{event_id}/ws
 - poi.created
 - poi.updated (nom modifié)
 - poi.deleted (point supprimé)
+- operator.status (statut d'un opérateur changé, lot 24 : `{"event_id", "device_id", "operator_status", "operator_status_at"}`, voir `event-operations-v0.1.md`)
 
 Le flux est strictement isolé par event_id. À ce stade, l'authentification WebSocket sera ajoutée avec la couche IAM.
 

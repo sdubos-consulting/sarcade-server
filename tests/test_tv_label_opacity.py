@@ -48,4 +48,5 @@ def test_no_label_left_with_a_fixed_opacity():
     calls = re.findall(r"bindTooltip\([^;]*?\{permanent:true[^}]*\}", PAGE)
     assert calls
     for c in calls:
-        assert "opacity:" in c or "label(p)" in c, c
+        # Station labels: label(p), with the status pastille since lot 24.
+        assert "opacity:" in c or "label(p)" in c or "stHtml(p)" in c, c
