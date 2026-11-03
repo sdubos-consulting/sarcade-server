@@ -254,6 +254,10 @@ class DeviceRow(Base):
     aprs_tx_consent: Mapped[bool | None] = mapped_column()
     # Icon of the operator on the map (sarcade.profile.preferences.OPERATOR_ICONS).
     icon: Mapped[str | None] = mapped_column(String(16))
+    # Status in one touch (lot 24, sarcade.events.operator_status): en_route,
+    # sur_place, disponible, pause or None, and the time it was chosen.
+    operator_status: Mapped[str | None] = mapped_column(String(16))
+    operator_status_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_contact_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_position_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

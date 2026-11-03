@@ -57,3 +57,6 @@ Vérification : `tests/test_tv.py`, `demo/verify_tv.py`.
 ## Bouton « Écrans » de la carte (lot 11, 30 octobre 2026)
 - `GET /api/v0.1/events/{event_id}/displays` donne en plus `mine` : écran appairé par l'appelant (e-mail vérifié = `owner`) ; sans e-mail vérifié (réseau local sans Access), tous les écrans comptent. L'application n'affiche le bouton « Écrans » que s'il existe au moins un écran actif `mine` (PCO et admin : tout écran actif de l'événement).
 - `PUT …/displays/{display_id}/view` accepte `live: true` (« Suivre ma vue ») : la vue suit la carte de l'expéditeur ; seule la première vue d'un suivi va en main courante (« Vue suivie en direct sur l'écran »), les suivantes non. Un envoi sans `live` ou `view: null` termine le suivi.
+
+## Statut des opérateurs (lot 24, 3 novembre 2026)
+- `positions[].operator_status` de l'état (`en_route`, `sur_place`, `disponible`, `pause` ou `null`) : pastille de couleur devant le nom de l'opérateur (`#FFB020`, `#4ADE80`, `#3DD6F5`, `#9AA3AD`), mise à jour au rafraîchissement suivant. Voir `event-operations-v0.1.md`.

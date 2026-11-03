@@ -38,6 +38,29 @@ Chaque position reçue (API ou synchronisation) met aussi à jour le dernier con
 - `contact` : « Arrivée dans l'événement » au premier contact (heartbeat ou position) ; « Perte de contact » quand l'appareil n'a pas été vu depuis plus de `sync_alert_minutes` (balayage toutes les 60 s, événements ouverts) ; « Contact rétabli (après X min) » à son retour. Une ligne par changement d'état : l'état d'un appareil est sa dernière ligne `contact`.
 - Ces deux types ne sont jamais affichés sur une TV.
 
+## Statut de l'opérateur (lot 24, 3 novembre 2026)
+
+Carte « Android Auto : statut en un appui ». Un statut par appareil de l'événement, choisi d'un appui (voiture, téléphone, PC), gardé jusqu'au suivant.
+
+| Valeur | Libellé | Couleur de la pastille (TV) |
+|---|---|---|
+| `en_route` | En route | `#FFB020` |
+| `sur_place` | Sur place | `#4ADE80` |
+| `disponible` | Disponible | `#3DD6F5` |
+| `pause` | Pause | `#9AA3AD` |
+| `null` | aucun statut | — |
+
+- **Envoi immédiat** : `PUT /api/v0.1/events/{event_id}/devices/{device_id}/status`, corps `{"status": "en_route" | "sur_place" | "disponible" | "pause" | null, "at": "<ISO 8601, facultatif>", "actor_id": "<facultatif>"}`. `at` = heure du choix sur l'appareil (absent : heure du serveur ; plus de 5 min dans le futur : ramenée à l'heure du serveur). Réponse `{"event_id", "device_id", "operator_status", "operator_status_at", "changed"}`. 422 `invalid_status` / `invalid_time`, 404 `event_not_found`.
+- **Envoi hors connexion** (file d'envoi) : synchronisation `object_type = "operator_status"`, `action = "update"`, `object_id` = `device_id`, charge `{"device_id", "status", "at", "actor_id"?}`. Statuts : `accepted` ; `conflict` si un statut plus récent est déjà connu ; `rejected` si mal formé (statut inconnu, `object_id` ≠ `device_id`, autre action). Le flux `…/sync/changes` porte l'état résultant (`{"event_id", "device_id", "operator_status", "operator_status_at"}`).
+- **Règle** : le plus récent (`at`) gagne ; un statut parti en retard ne remplace jamais un statut plus récent. Le même statut renvoyé ne change rien (son heure reste celle du premier choix : « depuis 8 h 10 »).
+- **Temps réel** : `operator.status` avec `{"event_id", "device_id", "operator_status", "operator_status_at"}`, seulement quand le statut change.
+- **Lecture** : `GET /api/v0.1/events/{event_id}/operator-statuses` (appareils qui ont un statut) ; `GET …/positions/latest` et `GET …/devices` (et la diffusion `device.updated`) portent aussi `operator_status` et `operator_status_at` (à ne pas confondre avec `status` des appareils, qui reste l'état du contact : `ok`, `late`, `unknown`).
+- **Main courante** (`kind = "operator_status"`) : « Statut de <libellé, indicatif ou appareil> : En route », « Statut de … retiré ».
+- **TV** : pastille de couleur devant le nom de l'opérateur (`positions[].operator_status` de l'état).
+- Stockage : colonnes `devices.operator_status` et `devices.operator_status_at` (migration `0028`).
+
+Vérification : `tests/test_operator_status.py`, `demo/verify_operator_status.py` (CI).
+
 ## Signaux par défaut du relevé
 
 `GET /api/v0.1/signals/defaults` → `{"signals": [{"label", "frequency_mhz", "exercise", "hidden"}, …]}` (liste initiale : 121,5 MHz détresse réelle, 121,375 MHz exercice, 406 MHz Cospas-Sarsat).
