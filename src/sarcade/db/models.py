@@ -418,3 +418,51 @@ class UserPreferencesRow(Base):
     email: Mapped[str] = mapped_column(String(320), primary_key=True)
     data: Mapped[dict] = mapped_column(JSON, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+# --- Accounts (lot 26, « Groupes d'organisation et habilitations ») ----------
+
+class UserRow(Base):
+    """Account of a person, identified by the email (unique key, lower case)
+    with a fixed internal id: changing the address keeps memberships and
+    history. Created at the first connection (code by email or Cloudflare
+    Access), or by the migration of the lists of 28 October."""
+    __tablename__ = "users"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=new_id)
+    email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True)
+    display_name: Mapped[str | None] = mapped_column(String(120))
+    status: Mapped[str] = mapped_column(String(16), default="active", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_by: Mapped[str | None] = mapped_column(String(64))
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class LoginCodeRow(Base):
+    """Code sent by email for the first connection of a device; only its
+    hash is kept. Short life, few attempts (sarcade.accounts)."""
+    __tablename__ = "login_codes"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=new_id)
+    email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
+    code_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    source_ip: Mapped[str | None] = mapped_column(String(64), index=True)
+
+
+class AuthDeviceRow(Base):
+    """Enrolled device of an account: long token kept by the device (only
+    its hash here), checked by this server without Internet, revocable."""
+    __tablename__ = "auth_devices"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    device_id: Mapped[str | None] = mapped_column(String(64))
+    label: Mapped[str | None] = mapped_column(String(120))
+    platform: Mapped[str | None] = mapped_column(String(32))
+    method: Mapped[str] = mapped_column(String(16), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_by: Mapped[str | None] = mapped_column(String(64))

@@ -55,6 +55,8 @@ from . import personal_files as personal_files_api
 from . import file_folders as file_folders_api
 from sarcade.files import folders as file_folders
 from . import roles as roles_api
+from . import auth as auth_api
+from sarcade.accounts.caller import resolve as resolve_caller
 from sarcade import roles as user_roles
 from . import tv as tv_api
 from sarcade.wakeup import service as wakeup_service
@@ -85,7 +87,10 @@ async def lifespan(_app):
         task.cancel()
 
 
-app = FastAPI(title="SARCADE Server", version="0.1.0-dev", lifespan=lifespan)
+# Every route knows its caller: enrolled device, Cloudflare Access or nobody
+# (lot 26, sarcade.accounts.caller).
+app = FastAPI(title="SARCADE Server", version="0.1.0-dev", lifespan=lifespan,
+              dependencies=[Depends(resolve_caller)])
 
 
 @app.middleware("http")
@@ -129,6 +134,7 @@ app.include_router(profile_api.router)
 app.include_router(personal_files_api.router)
 app.include_router(file_folders_api.router)
 app.include_router(roles_api.router)
+app.include_router(auth_api.router)
 app.include_router(tv_api.router)
 module_loader.load()
 for _router in module_hooks.routers:

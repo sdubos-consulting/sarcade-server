@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from sarcade.access.verify import identity_of
+from sarcade.accounts.caller import caller_of
 from sarcade.db.models import UserPreferencesRow
 from sarcade.profile.preferences import InvalidPreferences, apply_patch, normal_email
 
@@ -16,10 +16,9 @@ router = APIRouter(prefix="/api/v0.1")
 
 
 def _email(request: Request) -> str | None:
-    identity = identity_of(request)
-    if identity is None or not identity.email:
-        return None
-    return normal_email(identity.email)
+    # Account of an enrolled device (lot 26) or Cloudflare Access.
+    email = caller_of(request).email
+    return normal_email(email) if email else None
 
 
 @router.get("/me/preferences")

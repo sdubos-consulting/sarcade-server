@@ -61,6 +61,14 @@ services:
       # Updates and security (docs/security-updates-v0.1.md). The admin
       # token is placed by the operator in .env, never in the repository.
       SARCADE_ADMIN_TOKEN: ${SARCADE_ADMIN_TOKEN:-}
+      # Accès de secours (administrateurs du serveur) et envoi des codes de
+      # connexion par Brevo ; sans SMTP, envoi simulé (journal de sécurité).
+      SARCADE_ADMIN_EMAILS: ${SARCADE_ADMIN_EMAILS:-}
+      SARCADE_SMTP_HOST: ${SARCADE_SMTP_HOST:-}
+      SARCADE_SMTP_PORT: ${SARCADE_SMTP_PORT:-587}
+      SARCADE_SMTP_USER: ${SARCADE_SMTP_USER:-}
+      SARCADE_SMTP_PASSWORD: ${SARCADE_SMTP_PASSWORD:-}
+      SARCADE_SMTP_FROM: ${SARCADE_SMTP_FROM:-}
       SARCADE_SERVER_ID: ${SARCADE_SERVER_ID:-}
       SARCADE_UPDATE_CHECK: ${SARCADE_UPDATE_CHECK:-1}
       # Last versions on Google Play / TestFlight (« 0.1.0+415 »), shown on phones.
