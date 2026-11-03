@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from sarcade.db.models import CommGroupRow, DeviceRow, EventRow, LogbookRow, MessageRow, RouteObjectRow, SyncOperationRow
+from sarcade.events import order_status
 from sarcade.features import service as features
 from sarcade.groups import service as groups
 from sarcade.routes import service as routes
@@ -41,6 +42,8 @@ class Notices:
         self.order_conflicts: list[tuple[str, str, str]] = []
         # Messages of the move orders: (sender, recipients, priority, body, order id).
         self.messages: list[tuple[str, list[str], str, str, str]] = []
+        # Statuses of operators set by their move orders (lot 27), by device.
+        self.statuses: dict[str, dict] = {}
 
     def add(self, route_id: str, text: str) -> None:
         self.changes.setdefault(route_id, [])
@@ -124,7 +127,9 @@ def apply_route_object(db: Session, op, now: datetime, notices: Notices,
     else:
         row.data = {k: v for k, v in change.items() if k not in _META}
         if kind == "move_order":
-            row.data = routes.keep_eta(before if not was_deleted else None, row.data)
+            kept = before if not was_deleted else None
+            row.data = order_status.keep_fields(kept, routes.keep_eta(kept, row.data))
+            _follow_order_status(db, op.event_id, row, kept, actor, change["updated_at"], now, notices)
         row.route_id = row.id if kind == "route" else change.get("route_id")
         row.deleted_at = None
     row.updated_at, row.updated_by = change["updated_at"], actor
@@ -135,6 +140,44 @@ def apply_route_object(db: Session, op, now: datetime, notices: Notices,
     _logbook_and_notices(db, op.event_id, kind, row, before, was_deleted, change, route_row, notices, now)
     suffix = "deleted" if row.deleted_at is not None else "upserted"
     return "accepted", cursor, {"type": f"{kind}.{suffix}", "data": result}
+
+
+def _follow_order_status(db: Session, event_id: str, row: RouteObjectRow, before: dict | None, actor: str,
+                         at: datetime, now: datetime, notices: Notices) -> None:
+    """Status of the operator after a change of his order (lot 27,
+    sarcade.events.order_status): the target of the order and, when the
+    answer came from another terminal of the same person, that terminal.
+    [at]: time of the change, so that a status chosen by hand later is kept.
+    The status before the order is saved on the order at the first answer."""
+    from .operations import journal_operator_status, record_operator_status
+
+    data = dict(row.data or {})
+    event = order_status.transition(before, data)
+    if event is None:
+        return
+    saved = dict(data.get(order_status.BEFORE_FIELD) or {})
+    target = data.get("target_id") or ""
+    if event in ("refused", "cancelled"):
+        devices = list(saved)
+    else:
+        devices = [target] + ([actor] if actor != target and _same_person(db, event_id, actor, target) else [])
+    for device_id in devices:
+        device = db.get(DeviceRow, (event_id, device_id))
+        if device is None:
+            continue  # never seen in this event: no status to follow
+        if event in ("accepted", "arrived") and device_id not in saved:
+            saved[device_id] = device.operator_status
+        apply, status = order_status.target_status(event, saved, device_id)
+        if apply and record_operator_status(db, device, status, at, now, actor, order_status.REASONS[event]):
+            notices.statuses[device_id] = journal_operator_status(db, device, now)
+    # Done with the order (refused, cancelled, finished): nothing to restore later.
+    if event in ("refused", "cancelled", "finished"):
+        saved = {}
+    if saved:
+        data[order_status.BEFORE_FIELD] = saved
+    else:
+        data.pop(order_status.BEFORE_FIELD, None)
+    row.data = data
 
 
 def _same_person(db: Session, event_id: str, actor: str, target: str | None) -> bool:
@@ -277,6 +320,8 @@ def flush_notices(db: Session, event_id: str, notices: Notices, now: datetime) -
             "id": msg.id, "event_id": event_id, "sender_id": sender[:64], "recipient_ids": recipients,
             "priority": priority, "body": body, "attachments": [], "move_order_id": order_id,
             "created_at": features.iso(now)}})
+    for data in notices.statuses.values():
+        payloads.append({"type": "operator.status", "data": data})
     for route_id, name, actor in notices.order_conflicts:
         text = f"Ordre des points de la route « {name} » modifié en même temps par plusieurs personnes : la dernière version ({actor}) l'emporte"
         db.add(LogbookRow(event_id=event_id, kind="route", object_id=route_id, actor_id=actor, summary=text, time=now))

@@ -43,3 +43,7 @@ Carte « Android Auto : heure d'arrivée estimée envoyée au PCO » :
 - Pas de ligne de main courante par estimation (envoyée toutes les 2 min).
 
 Vérification : `tests/test_move_order_eta.py`, `demo/verify_move_orders.py` (CI).
+
+## Ordres de déplacement : statut de l'opérateur (lot 27, 3 novembre 2026)
+
+Accepté → « En route », arrivé → « Sur place », refusé ou annulé → statut d'avant l'ordre, « Terminé, disponible » (`finished_at` sur un ordre `arrived`) → « Disponible ». Champs gardés par le serveur : `operator_status_before`, `finished_at`. Détail : `event-operations-v0.1.md`, « Statut qui suit les ordres de déplacement ».

@@ -6,6 +6,7 @@ Authentication is not in place yet (ADR-002): actor ids are declared.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
@@ -20,6 +21,8 @@ from sarcade.events import operator_status
 from sarcade.events import settings as event_settings
 from sarcade.profile.preferences import OPERATOR_ICONS
 from sarcade.realtime.manager import manager
+from sarcade.routes.service import same_person
+from sarcade.sync.service import record_operation
 
 from .deps import get_db
 from .roles import require_pco
@@ -122,13 +125,57 @@ def set_operator_status(db: Session, event_id: str, device_id: str, status, at, 
     status = operator_status.clean(status)
     at = operator_status.parse_time(at, now)
     row = touch_device(db, event_id, device_id, now)
+    return record_operator_status(db, row, status, at, now, actor_id), row
+
+
+def record_operator_status(db: Session, row: DeviceRow, status: str | None, at: datetime, now: datetime,
+                           actor_id: str | None = None, reason: str | None = None) -> bool:
+    """Sets the status of [row] when [at] is newer than the stored one, with
+    its logbook line (and why, when the server chose it: lot 27). Not a
+    contact of the device."""
     if not operator_status.apply(row, status, at):
-        return False, row
-    who = row.label or row.callsign or device_id
-    db.add(LogbookRow(event_id=event_id, kind="operator_status", object_id=device_id[:64],
-                      actor_id=(actor_id or device_id)[:64], time=now,
-                      summary=operator_status.logbook_summary(who, status)))
-    return True, row
+        return False
+    who = row.label or row.callsign or row.device_id
+    db.add(LogbookRow(event_id=row.event_id, kind="operator_status", object_id=row.device_id[:64],
+                      actor_id=(actor_id or row.device_id)[:64], time=now,
+                      summary=operator_status.logbook_summary(who, status, reason)))
+    return True
+
+
+def journal_operator_status(db: Session, row: DeviceRow, now: datetime) -> dict:
+    """A status set by the server (lot 27) in the change feed, as a status
+    sent by the sync, for the clients that were offline. Returns the state."""
+    data = operator_status.state(row)
+    record_operation(db, event_id=row.event_id, operation_id=f"status-{uuid.uuid4()}", object_id=row.device_id,
+                     object_type="operator_status", action="update", payload=data, client_time=now)
+    return data
+
+
+def default_operator_status(db: Session, event: EventRow, row: DeviceRow, now: datetime,
+                            pending_count: int | None) -> bool:
+    """« Disponible » by default (card « Statut de l'opérateur : « Disponible »
+    par défaut », lot 27): at the first contact of a device in an event
+    (heartbeat), when it never had a status (choice 1). A status already
+    chosen is never replaced, « Aucun statut » included (choice 2); a new
+    device of the same person (same callsign without SSID) takes the status
+    of that person instead. Waits while the device still has operations in
+    its Outbox (a status chosen offline is on its way). Returns True when the
+    status was set."""
+    if row.operator_status_at is not None or event.ended_at is not None or (pending_count or 0) > 0:
+        return False
+    status, at, reason = "disponible", now, "par défaut"
+    if row.callsign:
+        same = [d for d in db.scalars(select(DeviceRow).where(
+                    DeviceRow.event_id == row.event_id, DeviceRow.device_id != row.device_id,
+                    DeviceRow.callsign.is_not(None), DeviceRow.operator_status_at.is_not(None))).all()
+                if same_person(d.callsign, row.callsign)]
+        if same:
+            latest = max(same, key=lambda d: operator_status.as_utc(d.operator_status_at))
+            if latest.operator_status is None:
+                return False
+            status, at = latest.operator_status, operator_status.as_utc(latest.operator_status_at)
+            reason = f"repris de {latest.label or latest.callsign or latest.device_id}"
+    return record_operator_status(db, row, status, at, now, row.device_id, reason)
 
 
 def _event_or_404(db: Session, event_id: str) -> EventRow:
@@ -270,10 +317,15 @@ async def heartbeat(event_id: str, device_id: str, payload: Heartbeat, db: Sessi
     settings = event_settings.merged(event.settings)
     interval = event_settings.clamp_interval(payload.tracking_interval_s, settings)
     row.tracking_interval_s = interval
+    # Lot 27: « Disponible » at the first contact (after the callsign above).
+    status_data = journal_operator_status(db, row, now) if default_operator_status(
+        db, event, row, now, payload.pending_count) else None
     client_update = updates_service.evaluate_client(db, device_id, payload.platform, payload.app_version, now,
                                                     in_active_event=event.ended_at is None)
     db.commit()
     await manager.broadcast(event_id, {"type": "device.updated", "data": device_dict(row, settings, now)})
+    if status_data is not None:
+        await manager.broadcast(event_id, {"type": "operator.status", "data": status_data})
     return {
         "server_time": now, "event_status": event.status, "ended_at": utc(event.ended_at),
         "settings": settings, "tracking_interval_s": interval,

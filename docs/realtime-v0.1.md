@@ -16,7 +16,7 @@ Connexion : /api/v0.1/events/{event_id}/ws
 - poi.created
 - poi.updated (nom, icône, couleur ou position modifiés)
 - poi.deleted (point supprimé)
-- operator.status (statut d'un opérateur changé, lot 24 : `{"event_id", "device_id", "operator_status", "operator_status_at"}`, voir `event-operations-v0.1.md`)
+- operator.status (statut d'un opérateur changé, lot 24 ; aussi posé par le serveur au premier heartbeat et par les ordres de déplacement, lot 27 : `{"event_id", "device_id", "operator_status", "operator_status_at"}`, voir `event-operations-v0.1.md`)
 
 Le flux est strictement isolé par event_id. À ce stade, l'authentification WebSocket sera ajoutée avec la couche IAM.
 
