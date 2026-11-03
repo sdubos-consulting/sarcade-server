@@ -105,8 +105,8 @@ Sur tous les canaux d'événement, après chaque changement :
 `revocation: true` quand un droit ou une appartenance est retiré : l'application relit `/me` **en priorité** et masque aussitôt ce qui n'est plus permis.
 
 ## Événements (PR 3/3)
-- Un événement a un **groupe organisateur** (`organizer_group_id`) et des **groupes invités**. Il est **visible** des membres (directs ou par imbrication) du groupe organisateur et des groupes invités, de ses **organisateurs** (droit `event_organizer` ou `group_admin` sur le groupe organisateur) et des administrateurs du serveur. **Inviter Public** ouvre l'événement à tous, appareils sans compte compris.
-- **Toute route** `/api/v0.1/events/{event_id}/…` (WebSocket compris) d'un événement non visible répond **404 `event_not_found`** (WebSocket fermé, code 1008). `GET /events` ne liste que les événements visibles. Dans `POST /sync`, une opération sur un événement non visible est `rejected` (« événement non visible pour ce compte »).
+- Un événement a un **groupe organisateur** (`organizer_group_id`) et des **groupes invités**. **Pendant la période de transition, tous les appelants (appareils sans compte et comptes identifiés) gardent la visibilité d'avant : tous les événements.** Après la date de fin, il est **visible** des membres (directs ou par imbrication) du groupe organisateur et des groupes invités, de ses **organisateurs** (droit `event_organizer` ou `group_admin` sur le groupe organisateur) et des administrateurs du serveur. **Inviter Public** ouvre l'événement à tous, appareils sans compte compris.
+- Après la transition, **toute route** `/api/v0.1/events/{event_id}/…` (WebSocket compris) d'un événement non visible répond **404 `event_not_found`** (WebSocket fermé, code 1008). `GET /events` ne liste que les événements visibles. Dans `POST /sync`, une opération sur un événement non visible est `rejected` (« événement non visible pour ce compte »).
 - **PCO d'un événement** = organisateur du groupe organisateur (ou administrateur) : `require_pco` des routes d'un événement (réglages, clôture, messages supprimés…) et drapeau PCO de la synchronisation (ordres de déplacement, suppressions) sont calculés **par événement**.
 - **Licence de l'organisation organisatrice** : après la transition, un relevé ou un point d'écoute (module ADRASEC) n'est accepté que si le compte a l'habilitation `module.adrasec` **et** que la licence de l'organisation qui organise l'événement couvre `adrasec` (sinon `rejected` : « module ADRASEC non autorisé pour ce compte »).
 - `GET /events`, `GET /events/{id}` : champ `organizer_group_id` ajouté.
@@ -135,8 +135,8 @@ Liste légère pour choisir les groupes invités ou la source d'un groupe de com
 
 ## Période de transition
 - Réglage serveur `transition` : `{"until": "…Z" | null}` choisi par l'administrateur ; **pas de date = transition en cours**.
-- **Pendant** la transition : le PCO est encore reconnu **par son nom** (`PCO`, `PCO-…`) ; un **appareil sans compte** garde le comportement d'avant (voit tous les événements, routes PCO ouvertes sans identité) ; les modules ne sont pas vérifiés à la synchronisation.
-- **Après** : appareil sans compte = **Public** (droits du Core, seulement les événements où Public est invité, aucune route PCO : 403 `pco_required`) ; `PCO-…` ne donne plus rien ; le module ADRASEC suit habilitation et licence.
+- **Pendant** la transition : **tous les appelants**, comptes identifiés compris, voient **tous les événements** (liste, routes, WebSocket, `/sync` sans rejet « événement non visible ») ; le PCO est encore reconnu **par son nom** (`PCO`, `PCO-…`) ; un **appareil sans compte** garde les routes PCO ouvertes sans identité ; les modules ne sont pas vérifiés à la synchronisation. Les droits d'administration et de PCO **calculés par groupes** restent actifs (un compte identifié est PCO par ses groupes, ou par son nom).
+- **Après** : visibilité par groupe organisateur et groupes invités pour tous ; appareil sans compte = **Public** (droits du Core, seulement les événements où Public est invité, aucune route PCO : 403 `pco_required`) ; `PCO-…` ne donne plus rien ; le module ADRASEC suit habilitation et licence.
 - `GET /api/v0.1/transition` (public) et `/me.transition` :
   ```json
   {"active": true, "until": null, "pco_by_name": true, "anonymous_rights": "legacy|core"}

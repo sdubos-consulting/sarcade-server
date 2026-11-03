@@ -117,6 +117,7 @@ def names(client, headers=None):
 def test_events_visible_to_the_invited_groups_only(client, db):
     h78 = member(db, "adrasec-78", "op@adrasec78.fr")
     hv = member(db, "vcmb", "signaleur@vcmb.fr")
+    end_transition(client)
     assert names(client, h78) == ["Exercice 78"]
     assert names(client, hv) == ["Course VCMB"]
     assert client.get("/api/v0.1/events/e78", headers=hv).status_code == 404
@@ -129,6 +130,7 @@ def test_events_visible_to_the_invited_groups_only(client, db):
 
 def test_nested_groups_see_the_events_of_their_parents(client, db):
     h = member(db, "pco-adrasec-78", "chef@adrasec78.fr")
+    end_transition(client)
     assert names(client, h) == ["Exercice 78"]
 
 
@@ -144,11 +146,31 @@ def test_device_without_account_sees_everything_during_the_transition_only(clien
 
 def test_server_administrator_sees_every_event(client, db):
     h = member(db, SERVER_ADMINS_ID, "stephane@sdubos.com")
+    end_transition(client)
     assert names(client, h) == ["Course VCMB", "Exercice 78"]
+
+
+def test_account_in_no_group_sees_events_during_the_transition_only(client, db):
+    """Decision of 3 Nov 2026: during the transition every caller, account
+    included, keeps the visibility of before."""
+    u, _ = accounts.ensure_user(db, "nouveau@x.fr", NOW, "test")
+    _, token = accounts.enroll(db, u, NOW, "email_code", device_id="TEL-N")
+    db.commit()
+    h = {"Authorization": f"Bearer {token}"}
+    assert client.get("/api/v0.1/events/e78", headers=h).status_code == 200
+    assert "Exercice 78" in names(client, h)
+    req = SimpleNamespace(state=SimpleNamespace(caller=Caller(email="nouveau@x.fr", user_id=u.id, via="device")))
+    op = SimpleNamespace(event_id="e78", object_type="map_feature", action="create", payload={"kind": "bearing"})
+    assert event_access.SyncAccess(db, req).refusal(op) is None
+    end_transition(client)
+    assert client.get("/api/v0.1/events/e78", headers=h).status_code == 404
+    assert "Exercice 78" not in names(client, h)
+    assert event_access.SyncAccess(db, req).refusal(op) == "événement non visible pour ce compte"
 
 
 def test_websocket_of_an_invisible_event_is_closed(client, db):
     hv = member(db, "vcmb", "signaleur@vcmb.fr")
+    end_transition(client)
     from starlette.websockets import WebSocketDisconnect
     with pytest.raises(WebSocketDisconnect) as exc:
         with client.websocket_connect("/api/v0.1/events/e78/ws", headers=hv) as ws:

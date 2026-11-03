@@ -65,16 +65,13 @@ HV = login(f"sig-{TAG}@vcmb.fr", f"TEL-{TAG}")
 r = c.post(f"{API}/events", json={"name": f"Exercice {TAG}", "kind": "exercise"}, headers=HP)
 check(r.status_code == 201, "PCO of ADRASEC 78 creates an event")
 EID = r.json()["id"]
-check(f"Exercice {TAG}" in event_names(HP) and f"Exercice {TAG}" not in event_names(HV),
-      "event visible to ADRASEC 78 only")
-check(c.get(f"{API}/events/{EID}", headers=HV).status_code == 404, "another organisation gets « not found »")
+check(f"Exercice {TAG}" in event_names(HV), "transition: every account still sees every event")
 r = c.post(f"{API}/events", json={"name": "x", "kind": "race", "organizer_group_id": groups["VCMB"]["id"]},
            headers=HP)
 check(r.status_code == 403, "no event for an organisation one does not organise")
 
 r = c.put(f"{API}/events/{EID}/access", json={"invited_group_ids": [groups["VCMB"]["id"]]}, headers=HP)
 check(r.status_code == 200 and r.json()["invited_groups"][0]["short_name"] == "VCMB", "VCMB invited by the PCO")
-check(f"Exercice {TAG}" in event_names(HV), "invited group sees the event")
 check(c.put(f"{API}/events/{EID}/access", json={"invited_group_ids": []}, headers=HV).status_code == 403,
       "an invited member is not the PCO")
 check(c.post(f"{API}/events/{EID}/close", json={"actor_id": f"TEL-{TAG}"}, headers=HV).status_code == 403,
@@ -92,6 +89,11 @@ past = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
 r = c.put(f"{API}/admin/transition", json={"until": past}, headers=ADMIN)
 check(r.status_code == 200 and r.json()["active"] is False, "transition ended by the administrator")
 check(f"Sans compte {TAG}" not in event_names(), "device without account: Core only, events not visible")
+check(f"Exercice {TAG}" in event_names(HP) and f"Exercice {TAG}" in event_names(HV),
+      "after the transition: organisers and invited group see the event")
+check(f"Sans compte {TAG}" not in event_names(HV), "after the transition: event of ADRASEC 78 hidden from VCMB")
+check(c.get(f"{API}/events/{anon.json()['id']}", headers=HV).status_code == 404,
+      "another organisation gets « not found »")
 check(c.post(f"{API}/events", json={"name": "x", "kind": "exercise"}).status_code == 403,
       "device without account no longer PCO")
 check(c.get(f"{API}/me", headers=HP).json()["transition"]["pco_by_name"] is False, "/me gives the transition state")

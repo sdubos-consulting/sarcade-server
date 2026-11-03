@@ -4,7 +4,8 @@
 belongs to an organising group and is visible to the invited groups only
 (the organising group is always invited), plus its organisers (PCO) and the
 administrators of the server. Inviting « Public » opens it to everybody.
-During the transition a device without account still sees every event."""
+During the transition every caller (account or not) still sees every
+event; the groups apply after its end date."""
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -61,8 +62,10 @@ def can_organize(db: Session, caller, event: EventRow, g: graphs.Graph | None = 
 
 
 def visible(db: Session, caller, event: EventRow, now: datetime | None = None) -> bool:
-    if caller.email is None and transition.active(now):
-        return True  # device without account during the transition: as before
+    if transition.active(now):
+        # Transition (decision of 3 Nov 2026): every caller, account or not,
+        # keeps the visibility of before; groups apply after the end date.
+        return True
     groups = audience(db, event)
     if not event.organizer_group_id and not groups:
         return True  # event outside the directory (created before it)
