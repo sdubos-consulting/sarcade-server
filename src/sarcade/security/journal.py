@@ -78,8 +78,9 @@ def record(db: Session, category: str, action: str, outcome: str = "success", *,
     last = db.scalars(select(SecurityEventRow).order_by(SecurityEventRow.seq.desc()).limit(1)).first()
     prev = last.hash if last is not None else GENESIS
     at = now or datetime.now(UTC)
-    if last is not None and at < last.at:
-        at = last.at  # chronological order follows the chain
+    last_at = None if last is None else (last.at if last.at.tzinfo else last.at.replace(tzinfo=UTC))
+    if last_at is not None and at < last_at:
+        at = last_at  # chronological order follows the chain
     row = SecurityEventRow(at=at, category=category, action=action[:64], outcome=outcome,
                            actor=(actor or None) and actor[:64], device_id=(device_id or None) and device_id[:64],
                            event_id=(event_id or None) and event_id[:64],

@@ -73,5 +73,7 @@ def test_pco_required_only_with_a_checked_email():
 def test_me_gives_the_roles():
     db = _Db()
     roles.save(db, ["a@x.fr"], [])
-    assert api.me(_req("A@x.fr"), db) == {"email": "a@x.fr", "checked": True, "roles": ["admin", "pco"]}
+    got = api.me(_req("A@x.fr"), db)
+    assert {k: got[k] for k in ("email", "checked", "roles")} == {"email": "a@x.fr", "checked": True,
+                                                                  "roles": ["admin", "pco"]}
     assert api.me(_req(None), db)["checked"] is False

@@ -27,3 +27,9 @@ class ConnectionManager:
 
 
 manager = ConnectionManager()
+
+
+async def broadcast_all(payload: dict) -> None:
+    """Same message on every event channel (revocations, rights changed)."""
+    for event_id in list(manager._connections):
+        await manager.broadcast(event_id, payload)

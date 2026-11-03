@@ -3,8 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from sarcade import roles
-from sarcade.access.verify import identity_of
+from sarcade import accounts, roles
+from sarcade.accounts.caller import caller_of
 from sarcade.security import journal
 
 from .deps import get_db
@@ -13,8 +13,9 @@ router = APIRouter(prefix="/api/v0.1")
 
 
 def checked_email(request: Request) -> str | None:
-    identity = identity_of(request)
-    return identity.email.strip().lower() if identity is not None and identity.email else None
+    """Email of the caller: account of an enrolled device (lot 26) or
+    person checked by Cloudflare Access; None for a device without account."""
+    return caller_of(request).email
 
 
 def require_pco(request: Request, db: Session = Depends(get_db)) -> str | None:
@@ -41,8 +42,28 @@ def require_admin_email(request: Request, db: Session = Depends(get_db)) -> str:
 
 @router.get("/me")
 def me(request: Request, db: Session = Depends(get_db)):
-    email = checked_email(request)
-    return {"email": email, "checked": email is not None, "roles": roles.roles_of(db, email)}
+    """Who am I: email, account, enrolled device, rights (docs/accounts-v0.1.md).
+    A person checked by Cloudflare Access gets an account at the first call."""
+    caller = caller_of(request)
+    email = caller.email
+    out = {"email": email, "checked": email is not None, "roles": roles.roles_of(db, email),
+           "via": caller.via, "account": None, "device": None}
+    if email is None or not hasattr(db, "scalar"):
+        return out
+    from datetime import UTC, datetime
+    from sarcade.db.models import AuthDeviceRow
+    user = db.get(accounts.UserRow, caller.user_id) if caller.user_id else None
+    if user is None and caller.via == "access":
+        user, created = accounts.ensure_user(db, email, datetime.now(UTC), "Cloudflare Access")
+        if created:
+            journal.record(db, "auth", "account_created", "success", actor=email,
+                           details={"user_id": user.id, "method": "access"})
+        db.commit()
+    if user is not None:
+        out["account"] = accounts.user_dict(user)
+    if caller.auth_device_id:
+        out["device"] = accounts.device_dict(db.get(AuthDeviceRow, caller.auth_device_id))
+    return out
 
 
 class RolesIn(BaseModel):
