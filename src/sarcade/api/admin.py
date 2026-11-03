@@ -334,6 +334,34 @@ async def upload_client(platform: str, request: Request, version: str = Form(...
     return updates.package_info(key, packages[key])
 
 
+@router.post("/admin/clients/windows/fetch")
+async def fetch_windows_client(request: Request, _admin: str = Depends(require_admin), db: Session = Depends(get_db)):
+    """Takes the Windows installer of the windows-dev pre-release of GitHub
+    (manifest sarcade-windows-version.json, size and SHA-256 checked) and
+    distributes it as the Windows package of this server (card « Windows :
+    menu Mise à jour », lot 25): the clients then update from the local
+    network, without Internet."""
+    packages = dict(updates.get_value(db, "client_packages", {}) or {})
+    current = (packages.get("windows") or {}).get("sha256")
+    try:
+        fetched = await updates.fetch_windows_package(clients_root() / CLIENT_FILES["windows"], current_sha256=current,
+                                                      max_bytes=MAX_CLIENT_PACKAGE_BYTES)
+    except updates.PackageFetchError as exc:
+        journal.record(db, "admin", "client_package_fetched", "failure", source_ip=client_ip(request),
+                       details={"platform": "windows", "reason": str(exc)})
+        db.commit()
+        raise HTTPException(status_code=502, detail={"error": "windows_fetch_failed", "reason": str(exc)}) from exc
+    now = datetime.now(UTC)
+    if fetched["changed"] or "windows" not in packages:
+        packages["windows"] = {"version": fetched["version"], "sha256": fetched["sha256"], "size": fetched["size"],
+                               "uploaded_at": journal.iso(now), "build": fetched["build"], "source": "github"}
+        updates.set_value(db, "client_packages", packages, now)
+        journal.record(db, "admin", "client_package_fetched", source_ip=client_ip(request),
+                       details={"platform": "windows", "version": fetched["version"], "sha256": fetched["sha256"]})
+    db.commit()
+    return {**updates.package_info("windows", packages["windows"]), "changed": fetched["changed"]}
+
+
 @router.get("/clients/{platform}/package")
 def download_client(platform: str):
     filename = CLIENT_FILES.get(platform)

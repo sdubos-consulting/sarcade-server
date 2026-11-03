@@ -3,6 +3,7 @@ releases API and a SIEM syslog collector (TCP, octet counting), for the demo
 stack and the CI (no Internet, no routing tiles). Serves plausible data."""
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
+import hashlib
 import json
 import os
 import socketserver
@@ -10,6 +11,10 @@ import threading
 from urllib.parse import urlparse
 
 SIEM_RECEIVED: list[str] = []
+# windows-dev pre-release of sarcade-app (lot 25, POST /admin/clients/windows/fetch).
+WINDOWS_INSTALLER = b"MZ-SARCADE-demo-installer"
+WINDOWS_MANIFEST = {"version": "0.1.0+960", "build": "main@demo000", "size": len(WINDOWS_INSTALLER),
+                    "sha256": hashlib.sha256(WINDOWS_INSTALLER).hexdigest(), "installer": "sarcade-windows-setup.exe"}
 
 
 def forecast(path):
@@ -112,6 +117,15 @@ class Handler(BaseHTTPRequestHandler):
             body = VIGILANCE
         elif path == "/releases/latest":
             body = {"tag_name": "v9.9.0", "html_url": "https://example.invalid/releases/v9.9.0"}
+        elif path == "/windows-dev/sarcade-windows-version.json":
+            body = WINDOWS_MANIFEST
+        elif path == "/windows-dev/sarcade-windows-setup.exe":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Length", str(len(WINDOWS_INSTALLER)))
+            self.end_headers()
+            self.wfile.write(WINDOWS_INSTALLER)
+            return
         elif path == "/geocodage/reverse":
             body = {"type": "FeatureCollection", "features": [{"geometry": {"type": "Point",
                     "coordinates": [1.9097, 48.8232]}, "properties": {"street": "Rue des Côteaux de Chatron",

@@ -5,9 +5,13 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+import hashlib
 from importlib import metadata
 import logging
 import os
+from pathlib import Path
+import shutil
+import uuid
 
 import httpx
 from sqlalchemy import func, select
@@ -153,7 +157,95 @@ def store_release(db: Session, platform: str | None) -> dict | None:
 def package_info(platform: str, package: dict) -> dict:
     return {"platform": platform, "version": package["version"], "sha256": package["sha256"],
             "size": package["size"], "url": f"/api/v0.1/clients/{platform}/package",
-            "uploaded_at": package["uploaded_at"]}
+            "uploaded_at": package["uploaded_at"], "build": package.get("build")}
+
+
+# --- Windows client taken from GitHub (windows-dev) -----------------------------
+
+DEFAULT_WINDOWS_RELEASE_URL = "https://github.com/sdubos-consulting/sarcade-app/releases/download/windows-dev"
+WINDOWS_MANIFEST = "sarcade-windows-version.json"
+WINDOWS_INSTALLER = "sarcade-windows-setup.exe"
+
+
+class PackageFetchError(Exception):
+    """The windows-dev pre-release could not be taken (reason in args[0])."""
+
+
+def windows_release_url() -> str:
+    return os.getenv("SARCADE_WINDOWS_RELEASE_URL", DEFAULT_WINDOWS_RELEASE_URL).rstrip("/")
+
+
+def parse_windows_manifest(data) -> dict:
+    """Content of sarcade-windows-version.json, written by the CI of
+    sarcade-app: {"version": "0.1.0+960", "build": "main@abc1234",
+    "sha256": "…", "size": 123}."""
+    if not isinstance(data, dict):
+        raise PackageFetchError("invalid_manifest")
+    version, sha, size = data.get("version"), data.get("sha256"), data.get("size")
+    if not isinstance(version, str) or not policy._VERSION.match(version.strip()):
+        raise PackageFetchError("invalid_manifest_version")
+    if not isinstance(sha, str) or len(sha.strip()) != 64 or any(ch not in "0123456789abcdef" for ch in sha.strip().lower()):
+        raise PackageFetchError("invalid_manifest_sha256")
+    if isinstance(size, bool) or not isinstance(size, int) or size <= 0:
+        raise PackageFetchError("invalid_manifest_size")
+    build = data.get("build")
+    return {"version": version.strip(), "sha256": sha.strip().lower(), "size": size,
+            "build": build.strip()[:64] if isinstance(build, str) and build.strip() else None}
+
+
+async def fetch_windows_package(target: Path, *, current_sha256: str | None = None, max_bytes: int,
+                                client: httpx.AsyncClient | None = None) -> dict:
+    """Takes the Windows installer of the windows-dev pre-release (card
+    « Windows : menu Mise à jour », lot 25): the manifest first, then the
+    installer, written to [target] only when its size and SHA-256 match.
+    Nothing downloaded when [current_sha256] is already the published one.
+    Returns the manifest with ``changed``."""
+    base = windows_release_url()
+    own = client is None
+    client = client or httpx.AsyncClient(timeout=httpx.Timeout(60, connect=15), follow_redirects=True)
+    try:
+        try:
+            r = await client.get(f"{base}/{WINDOWS_MANIFEST}")
+        except httpx.HTTPError as exc:
+            raise PackageFetchError(f"manifest_{type(exc).__name__}") from exc
+        if r.status_code != 200:
+            raise PackageFetchError(f"manifest_http_{r.status_code}")
+        try:
+            manifest = parse_windows_manifest(r.json())
+        except ValueError as exc:
+            raise PackageFetchError("invalid_manifest") from exc
+        if manifest["size"] > max_bytes:
+            raise PackageFetchError("package_too_large")
+        if current_sha256 == manifest["sha256"] and target.is_file():
+            return {**manifest, "changed": False}
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.parent / f".fetch-{uuid.uuid4()}"
+        digest, size = hashlib.sha256(), 0
+        try:
+            try:
+                async with client.stream("GET", f"{base}/{WINDOWS_INSTALLER}") as res:
+                    if res.status_code != 200:
+                        raise PackageFetchError(f"installer_http_{res.status_code}")
+                    with tmp.open("wb") as out:
+                        async for chunk in res.aiter_bytes(1024 * 1024):
+                            size += len(chunk)
+                            if size > manifest["size"]:
+                                raise PackageFetchError("installer_size_mismatch")
+                            digest.update(chunk)
+                            out.write(chunk)
+            except httpx.HTTPError as exc:
+                raise PackageFetchError(f"installer_{type(exc).__name__}") from exc
+            if size != manifest["size"]:
+                raise PackageFetchError("installer_size_mismatch")
+            if digest.hexdigest() != manifest["sha256"]:
+                raise PackageFetchError("installer_sha256_mismatch")
+            shutil.move(tmp, target)
+        finally:
+            tmp.unlink(missing_ok=True)
+        return {**manifest, "changed": True}
+    finally:
+        if own:
+            await client.aclose()
 
 
 # --- New server version -----------------------------------------------------
