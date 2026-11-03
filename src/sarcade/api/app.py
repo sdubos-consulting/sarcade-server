@@ -11,6 +11,7 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request,
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse, JSONResponse
 from geoalchemy2.elements import WKTElement
+from geoalchemy2.shape import to_shape
 from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.exc import DataError, IntegrityError, SQLAlchemyError
@@ -461,7 +462,9 @@ def _apply_map_feature(db: Session, op, now: datetime, pco: bool = False) -> tup
 
 def _apply_poi_change(db: Session, op, now: datetime, pco: bool) -> tuple[str, int, dict | None]:
     """Rename or delete of a point of interest: by its author or the PCO;
-    the change feed carries the resulting state (``deleted`` on a deletion)."""
+    the change feed carries the resulting state (``deleted`` on a deletion).
+    An update may also change the colour and the place (lot 25: one window
+    for creation and modification, move written in the logbook)."""
     row = db.get(POIRow, op.object_id)
     if row is None or row.event_id != op.event_id:
         raise SyncRejected("point d'intérêt inconnu")
@@ -479,6 +482,16 @@ def _apply_poi_change(db: Session, op, now: datetime, pco: bool) -> tuple[str, i
         icon = pois.clean_icon(op.payload.get("icon")) if update and "icon" in op.payload else row.icon
     except pois.InvalidPoi:
         raise SyncRejected("icône de point invalide")
+    try:
+        color = pois.clean_color(op.payload.get("color")) if update and "color" in op.payload else row.color
+    except pois.InvalidPoi:
+        raise SyncRejected("couleur de point invalide")
+    moved_to = None
+    if update and ("lat" in op.payload or "lon" in op.payload):
+        try:
+            moved_to = pois.clean_position(op.payload.get("lat"), op.payload.get("lon"))
+        except pois.InvalidPoi:
+            raise SyncRejected("position de point invalide")
     status, cursor = record_operation(
         db, event_id=op.event_id, operation_id=op.operation_id, object_id=op.object_id,
         object_type=op.object_type, action=op.action, payload=op.payload, client_time=op.client_time)
@@ -496,7 +509,15 @@ def _apply_poi_change(db: Session, op, now: datetime, pco: bool) -> tuple[str, i
         db.add(LogbookRow(event_id=op.event_id, kind="poi", object_id=row.id, actor_id=actor, time=now,
                           summary=pois.logbook_summary(row.label, "delete")))
     else:
-        row.label, row.icon = label, icon
+        row.label, row.icon, row.color = label, icon, color
+        if moved_to is not None:
+            # Move (lot 25): new place, and a logbook line with the distance.
+            before = to_shape(row.point)
+            metres = pois.distance_m(before.y, before.x, moved_to[0], moved_to[1])
+            row.point = WKTElement(f"POINT({moved_to[1]} {moved_to[0]})", srid=4326)
+            if metres >= 0.5:
+                db.add(LogbookRow(event_id=op.event_id, kind="poi", object_id=row.id, actor_id=actor, time=now,
+                                  summary=pois.move_summary(row.label, metres)))
     db.flush()
     result = pois.state(row)
     journal.payload = result

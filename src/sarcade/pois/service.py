@@ -4,6 +4,7 @@
 29 Oct 2026, option A). Everyone changes his own points, the PCO all of them;
 a deletion is written in the logbook and propagated to the other clients."""
 from datetime import UTC, datetime
+import math
 
 from geoalchemy2.shape import to_shape
 
@@ -53,6 +54,38 @@ def clean_label(value) -> str | None:
     if len(value) > MAX_LABEL:
         raise InvalidPoi("invalid_label")
     return value or None
+
+
+def clean_position(lat, lon) -> tuple[float, float]:
+    """New place of a moved point (lot 25, « Point d'intérêt : le déplacer
+    facilement »): finite latitude and longitude within their bounds."""
+    if isinstance(lat, bool) or isinstance(lon, bool) or not isinstance(lat, int | float) or not isinstance(lon, int | float):
+        raise InvalidPoi("invalid_position")
+    lat, lon = float(lat), float(lon)
+    if not (math.isfinite(lat) and math.isfinite(lon) and -90 <= lat <= 90 and -180 <= lon <= 180):
+        raise InvalidPoi("invalid_position")
+    return lat, lon
+
+
+def distance_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance (haversine), in metres."""
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp, dl = p2 - p1, math.radians(lon2 - lon1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * 6_371_008.8 * math.asin(min(1.0, math.sqrt(a)))
+
+
+def format_distance(metres: float) -> str:
+    """« 120 m », « 1,4 km » (French, as the logbook)."""
+    if metres < 1000:
+        return f"{round(metres)} m"
+    return f"{metres / 1000:.1f} km".replace(".", ",")
+
+
+def move_summary(label: str | None, metres: float) -> str:
+    """Logbook line of a move: « Point d'intérêt « X » déplacé de 120 m »."""
+    name = f" « {label} »" if label else ""
+    return f"Point d'intérêt{name} déplacé de {format_distance(metres)}"
 
 
 def actor_of(payload: dict) -> str | None:

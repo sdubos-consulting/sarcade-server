@@ -141,3 +141,60 @@ def test_rename_keeps_the_icon():
 def test_invalid_icon_is_rejected():
     with pytest.raises(api.SyncRejected):
         api._apply_poi_change(FakeDb(row()), op("update", icon="skull", updated_by="TEL-02"), NOW, False)
+
+
+# Lot 25: colour in the window of the point, and move.
+
+def test_color_change_by_author():
+    db = FakeDb(row())
+    status, _, msg = api._apply_poi_change(db, op("update", color=0xFFE53935, updated_by="TEL-02"), NOW, False)
+    assert status == "accepted" and msg["data"]["color"] == 0xFFE53935 and msg["data"]["label"] == "Point haut"
+
+
+def test_invalid_color_is_rejected():
+    with pytest.raises(api.SyncRejected):
+        api._apply_poi_change(FakeDb(row()), op("update", color="red", updated_by="TEL-02"), NOW, False)
+
+
+def test_one_update_for_name_icon_and_color():
+    db = FakeDb(row())
+    _, _, msg = api._apply_poi_change(db, op("update", label="Gué", icon="water", color=0xFF1E88E5,
+                                             updated_by="TEL-02"), NOW, False)
+    assert (msg["data"]["label"], msg["data"]["icon"], msg["data"]["color"]) == ("Gué", "water", 0xFF1E88E5)
+
+
+def test_move_changes_the_place_and_goes_to_logbook():
+    db = FakeDb(row())
+    # About 120 m north of 48.82, 1.91.
+    status, _, msg = api._apply_poi_change(db, op("update", lat=48.82108, lon=1.91, updated_by="TEL-02"), NOW, False)
+    assert status == "accepted" and msg["data"]["lat"] == pytest.approx(48.82108) and msg["data"]["lon"] == pytest.approx(1.91)
+    logs = [x for x in db.added if isinstance(x, LogbookRow)]
+    assert len(logs) == 1 and logs[0].summary == "Point d'intérêt « Point haut » déplacé de 120 m"
+    assert logs[0].kind == "poi" and logs[0].actor_id == "TEL-02"
+
+
+def test_move_by_another_operator_is_refused():
+    with pytest.raises(api.SyncRejected):
+        api._apply_poi_change(FakeDb(row()), op("update", lat=48.83, lon=1.92, updated_by="TEL-03"), NOW, False)
+
+
+def test_move_by_pco_is_accepted():
+    status, _, _ = api._apply_poi_change(FakeDb(row()), op("update", lat=48.83, lon=1.92, updated_by="PCO"), NOW, False)
+    assert status == "accepted"
+
+
+@pytest.mark.parametrize("lat,lon", [(91, 1.0), (48.0, None), ("48", 1.0), (True, 1.0), (float("nan"), 1.0)])
+def test_invalid_position_is_rejected(lat, lon):
+    with pytest.raises(api.SyncRejected):
+        api._apply_poi_change(FakeDb(row()), op("update", lat=lat, lon=lon, updated_by="TEL-02"), NOW, False)
+
+
+def test_rename_alone_does_not_move_nor_log():
+    db = FakeDb(row())
+    _, _, msg = api._apply_poi_change(db, op("update", label="Gué", updated_by="TEL-02"), NOW, False)
+    assert msg["data"]["lat"] == pytest.approx(48.82) and not [x for x in db.added if isinstance(x, LogbookRow)]
+
+
+def test_distance_formats():
+    assert pois.format_distance(119.6) == "120 m" and pois.format_distance(1430) == "1,4 km"
+    assert pois.move_summary(None, 50) == "Point d'intérêt déplacé de 50 m"
