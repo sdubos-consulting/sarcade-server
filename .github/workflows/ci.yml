@@ -117,6 +117,9 @@ jobs:
       - name: Verify the modules per event (event models, bearings refused without ADRASEC)
         working-directory: demo
         run: docker compose -f docker-compose.demo.yml run --rm --entrypoint sh simulator -c "pip install -q httpx && python /demo/verify_modules.py"
+      - name: Verify the status of the operators (lot 24)
+        working-directory: demo
+        run: docker compose -f docker-compose.demo.yml run --rm --entrypoint sh simulator -c "pip install -q httpx && python /demo/verify_operator_status.py"
       - name: Verify HTTPS through the reverse proxy (option B, local CA)
         working-directory: demo
         run: |

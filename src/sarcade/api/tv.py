@@ -34,7 +34,7 @@ from sarcade.modules import hooks as module_hooks
 
 from .deps import get_db
 from .roles import checked_email
-from .serializers import position_dict, reference_site_dict
+from .serializers import position_dict, reference_site_dict, with_operator_status
 
 router = APIRouter()
 KEY = "displays"
@@ -257,7 +257,8 @@ def _map_layers(db: Session, event_id: str, opts: dict, fr: str | None, rr: str 
 
 # What the TV gets of each position; ``aprs_symbol`` (table + code, lot 19):
 # the APRS gateways in a diamond.
-STATE_POSITION_KEYS = ("device_id", "lat", "lon", "time", "source", "callsign", "aprs_symbol")
+# ``operator_status`` (lot 24): pastille of the status before the name.
+STATE_POSITION_KEYS = ("device_id", "lat", "lon", "time", "source", "callsign", "aprs_symbol", "operator_status")
 
 
 @router.get("/api/v0.1/tv/state")
@@ -274,7 +275,8 @@ def state(request: Request, fr: str | None = Query(None, max_length=32), rr: str
         partition_by=PositionRow.device_id, order_by=PositionRow.time.desc()).label("rn")
     ).where(PositionRow.event_id == event.id).subquery()
     rows = db.scalars(select(PositionRow).join(ranked, PositionRow.id == ranked.c.id).where(ranked.c.rn == 1)).all()
-    positions = [{k: v for k, v in position_dict(r).items() if k in STATE_POSITION_KEYS} for r in rows]
+    positions = [{k: v for k, v in p.items() if k in STATE_POSITION_KEYS}
+                 for p in with_operator_status(db, event.id, [position_dict(r) for r in rows])]
     msgs = db.scalars(select(MessageRow).where(MessageRow.event_id == event.id)
                       .order_by(MessageRow.created_at.desc()).limit(60)).all()
     snap = tv.snapshot({"id": event.id, "name": event.name}, positions, [_msg(m) for m in reversed(msgs)])
@@ -684,6 +686,7 @@ h2{font-size:16px;color:var(--h2);text-transform:uppercase;letter-spacing:1px;ma
 /* Station labels (lot 19, style A): rounded dark pill as the legend, white
    bold text, thin frame of the station colour; light pill in day mode. */
 .leaflet-tooltip.stl{background:rgba(3,21,43,.82);color:#fff;font-size:14px;font-weight:700;line-height:1.3;border:1.5px solid;border-radius:7px;padding:1px 7px;box-shadow:0 1px 3px rgba(0,0,0,.35)}
+.leaflet-tooltip.stl .ost{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:5px;vertical-align:-1px;border:1.5px solid rgba(0,0,0,.45);box-sizing:border-box}
 .leaflet-tooltip.stl:before{display:none}.leaflet-tooltip.stl.op{border-color:#3dd6f5}.leaflet-tooltip.stl.ap{border-color:#ffb020}
 #app.day .leaflet-tooltip.stl{background:rgba(255,255,255,.88);color:#0b1a2b;box-shadow:0 1px 3px rgba(0,0,0,.2)}
 .txt span{white-space:nowrap;font-size:16px;font-weight:700;text-shadow:0 0 3px var(--shadow)}
@@ -744,13 +747,17 @@ function nz(){for(var i=0;i<arguments.length;i++){var v=arguments[i];if(v!==null
 const esc=v=>String(nz(v,'')).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 // Station name without the technical prefix: callsign for APRS, else the terminal.
 function label(p){return p.callsign||String(p.device_id||'').replace(/^aprs:/,'');}
+// Status of the operator (lot 24): pastille before the name, same colours
+// as sarcade.events.operator_status.COLORS.
+const OST={en_route:'#FFB020',sur_place:'#4ADE80',disponible:'#3DD6F5',pause:'#9AA3AD'};
+function stHtml(p){const c=OST[p.operator_status];return(c?'<i class="ost" style="background:'+c+'"></i>':'')+esc(label(p));}
 // Labels that would touch (lot 19): the next one is shifted down or up by
 // one line, hidden only when no place is left (operators first, then APRS);
 // width estimated from the text, no layout read per station; recomputed on zoom.
 const LBL_H=24;
 function declutter(){if(!map)return;const kept=[];
 const ms=Object.values(markers).sort((a,b)=>(a._aprs?1:0)-(b._aprs?1:0));
-for(const m of ms){const pt=map.latLngToContainerPoint(m.getLatLng()),x=pt.x+10,w=18+8.5*String(m._lbl||'').length;let dy=null;
+for(const m of ms){const pt=map.latLngToContainerPoint(m.getLatLng()),x=pt.x+10,w=18+8.5*String(m._lbl||'').length+(m._st?16:0);let dy=null;
 for(const d of [0,LBL_H,-LBL_H]){const y=pt.y+d;if(!kept.some(q=>q.x<x+w&&x<q.x+q.w&&Math.abs(q.y-y)<LBL_H)){dy=d;break;}}
 if(dy===null){m.closeTooltip();continue;}kept.push({x:x,y:pt.y+dy,w:w});
 const t=m.getTooltip(),moved=t&&t._dy!==dy;if(moved){t._dy=dy;t.options.offset=L.point(0,dy);}
@@ -1022,7 +1029,8 @@ for(const p of s.positions){const ll=[p.lat,p.lon];pts.push(ll);const k=p.device
 // APRS gateways in a diamond.
 const gw=aprs?gateway(p.aprs_symbol):null;if(markers[k]&&markers[k]._gw!==gw){map.removeLayer(markers[k]);delete markers[k];}
 if(!markers[k]){markers[k]=(gw!==null?L.marker(ll,{icon:gwIcon(gw),keyboard:false}):L.circleMarker(ll,{radius:aprs?6:8,color:'#fff',weight:2,fillColor:aprs?'#ffb020':'#3dd6f5',fillOpacity:.9}))
-.bindTooltip(esc(label(p)),{permanent:true,direction:'right',className:'stl '+(aprs?'ap':'op')}).addTo(map);markers[k]._aprs=aprs;markers[k]._gw=gw;markers[k]._lbl=label(p);}else markers[k].setLatLng(ll);}
+.bindTooltip(stHtml(p),{permanent:true,direction:'right',className:'stl '+(aprs?'ap':'op')}).addTo(map);markers[k]._aprs=aprs;markers[k]._gw=gw;markers[k]._lbl=label(p);markers[k]._st=p.operator_status||'';}
+else{markers[k].setLatLng(ll);if(markers[k]._st!==(p.operator_status||'')){markers[k]._st=p.operator_status||'';markers[k].setTooltipContent(stHtml(p));}}}
 // Stations no longer shown (hidden layer) leave the map.
 const keep=new Set(s.positions.map(p=>p.device_id));for(const k of Object.keys(markers))if(!keep.has(k)){map.removeLayer(markers[k]);delete markers[k];}
 layers(s);weather(s.weather);identify(s.identify);

@@ -22,7 +22,8 @@ def _js(name: str) -> str:
 def test_symbol_sent_to_the_tv():
     assert "aprs_symbol" in api.STATE_POSITION_KEYS
     # Nothing more than the TV needs (no path, no via, no battery).
-    assert set(api.STATE_POSITION_KEYS) == {"device_id", "lat", "lon", "time", "source", "callsign", "aprs_symbol"}
+    assert set(api.STATE_POSITION_KEYS) == {"device_id", "lat", "lon", "time", "source", "callsign", "aprs_symbol",
+                                            "operator_status"}
     row = {"device_id": "aprs:F4GVN-14", "lat": 48.9, "lon": 1.8, "time": "t", "source": "aprs",
            "callsign": "F4GVN-14", "aprs_symbol": "L&", "aprs_path": "WIDE1-1", "battery_pct": None}
     assert {k: v for k, v in row.items() if k in api.STATE_POSITION_KEYS}["aprs_symbol"] == "L&"
