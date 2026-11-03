@@ -56,7 +56,7 @@ Erreurs de l'annuaire : `{"detail": "<code>"}` ou `{"detail": {"error": "<code>"
 - `POST /admin/groups` `{"short_name", "name"?, "description"?, "color"?, "parent_id"?, "member_of_parent"?: true}` → 201 groupe. Sans `parent_id` (organisation) : administrateur du serveur.
 - `GET /admin/groups/{id}` → groupe + `users`, `invitations`, `groups` (membres), `habilitations`, `ancestors`, `can_admin`, `can_manage_members`.
 - `PATCH /admin/groups/{id}` `{"short_name"?, "name"?, "description"?, "color"?, "parent_id"?}` → groupe (rattacher ailleurs : administrer aussi le nouveau parent ; `null` : administrateur du serveur).
-- `DELETE /admin/groups/{id}` → `{"deleted": true}` (refusé : groupe système, sous-groupes rattachés).
+- `DELETE /admin/groups/{id}` → `{"deleted": true}` (refusé : groupe système, sous-groupes rattachés, 409 `group_has_events` si le groupe organise des événements).
 
 ### Membres
 - `GET /admin/groups/{id}/members` → `{"group_id", "public", "users": [{"user_id", "email", "display_name", "status", "added_at", "added_by"}], "invitations": [{"email", "invited_at", "invited_by"}], "groups": [{"id", "short_name"}]}`
@@ -103,3 +103,48 @@ Sur tous les canaux d'événement, après chaque changement :
 {"type": "rights.changed", "data": {"version": 13, "revocation": true, "reason": "member_removed"}}
 ```
 `revocation: true` quand un droit ou une appartenance est retiré : l'application relit `/me` **en priorité** et masque aussitôt ce qui n'est plus permis.
+
+## Événements (PR 3/3)
+- Un événement a un **groupe organisateur** (`organizer_group_id`) et des **groupes invités**. **Pendant la période de transition, tous les appelants (appareils sans compte et comptes identifiés) gardent la visibilité d'avant : tous les événements.** Après la date de fin, il est **visible** des membres (directs ou par imbrication) du groupe organisateur et des groupes invités, de ses **organisateurs** (droit `event_organizer` ou `group_admin` sur le groupe organisateur) et des administrateurs du serveur. **Inviter Public** ouvre l'événement à tous, appareils sans compte compris.
+- Après la transition, **toute route** `/api/v0.1/events/{event_id}/…` (WebSocket compris) d'un événement non visible répond **404 `event_not_found`** (WebSocket fermé, code 1008). `GET /events` ne liste que les événements visibles. Dans `POST /sync`, une opération sur un événement non visible est `rejected` (« événement non visible pour ce compte »).
+- **PCO d'un événement** = organisateur du groupe organisateur (ou administrateur) : `require_pco` des routes d'un événement (réglages, clôture, messages supprimés…) et drapeau PCO de la synchronisation (ordres de déplacement, suppressions) sont calculés **par événement**.
+- **Licence de l'organisation organisatrice** : après la transition, un relevé ou un point d'écoute (module ADRASEC) n'est accepté que si le compte a l'habilitation `module.adrasec` **et** que la licence de l'organisation qui organise l'événement couvre `adrasec` (sinon `rejected` : « module ADRASEC non autorisé pour ce compte »).
+- `GET /events`, `GET /events/{id}` : champ `organizer_group_id` ajouté.
+
+### `POST /api/v0.1/events` (champs ajoutés)
+`{"name", "kind", "summary"?, "modules"?, "organizer_group_id"?, "invited_group_ids"?: [ids]}`. Sans `organizer_group_id` : le seul groupe que l'appelant organise, sinon le groupe par défaut du serveur (ADRASEC 78). L'appelant doit organiser ce groupe : 403 `{"detail": "event_organizer_required"}` ; 422 `invalid_organizer_group`. Réponse : l'événement avec `organizer_group_id`.
+
+### `GET /api/v0.1/events/{event_id}/access`
+```json
+{"event_id", "organizer_group": {"id", "short_name", "name"}, "invited_groups": [{"id", "short_name", "name"}],
+ "organization_id": "fnrasec", "can_organize": true}
+```
+
+### `PUT /api/v0.1/events/{event_id}/access` (PCO de l'événement)
+`{"organizer_group_id"?, "invited_group_ids"?: [ids]}` (liste complète des invités) → même réponse que `GET`. Erreurs : 401/403 `event_organizer_required`, 404 `{"error": "group_not_found", "group_id"}`, 422 `invalid_organizer_group`. Main courante (« Groupes invités : … », « Groupes retirés de l'événement : … »), journal de sécurité (`event_invitations_changed`, `event_organizer_changed`) et temps réel sur le canal de l'événement :
+```json
+{"type": "event.access.updated", "data": {…accès…, "revocation": true}}
+```
+`revocation: true` quand un groupe est retiré : les appareils qui ne voient plus l'événement le quittent (l'appel suivant répond 404).
+
+### `GET /api/v0.1/directory/groups` (organisateurs et administrateurs)
+Liste légère pour choisir les groupes invités ou la source d'un groupe de communication : `[{"id", "short_name", "name", "parent_id", "system", "organization_id", "color", "can_organize"}]`. 401 `account_required`, 403 `event_organizer_required`.
+
+### `POST /api/v0.1/events/{event_id}/groups/from-directory` (PCO de l'événement)
+`{"group_id", "name"?, "mode"?: "discussion|listen_only"}` → **201** groupe de communication (format de `comm-groups-v0.1.md`) avec `members` = identifiants déclarés (`device_id`) des **appareils enrôlés** des membres du moment (directs et imbriqués), `source_org_group_id`, et en plus `people` (comptes membres) et `devices` (appareils copiés). Les deux groupes restent indépendants ensuite. Temps réel : `group.upserted`. Erreurs : 403 `event_organizer_required`, 409 `event_closed`, 422 `invalid_group` (Public ou inconnu), 422 `invalid_mode`.
+
+## Période de transition
+- Réglage serveur `transition` : `{"until": "…Z" | null}` choisi par l'administrateur ; **pas de date = transition en cours**.
+- **Pendant** la transition : **tous les appelants**, comptes identifiés compris, voient **tous les événements** (liste, routes, WebSocket, `/sync` sans rejet « événement non visible ») ; le PCO est encore reconnu **par son nom** (`PCO`, `PCO-…`) ; un **appareil sans compte** garde les routes PCO ouvertes sans identité ; les modules ne sont pas vérifiés à la synchronisation. Les droits d'administration et de PCO **calculés par groupes** restent actifs (un compte identifié est PCO par ses groupes, ou par son nom).
+- **Après** : visibilité par groupe organisateur et groupes invités pour tous ; appareil sans compte = **Public** (droits du Core, seulement les événements où Public est invité, aucune route PCO : 403 `pco_required`) ; `PCO-…` ne donne plus rien ; le module ADRASEC suit habilitation et licence.
+- `GET /api/v0.1/transition` (public) et `/me.transition` :
+  ```json
+  {"active": true, "until": null, "pco_by_name": true, "anonymous_rights": "legacy|core"}
+  ```
+- `PUT /api/v0.1/admin/transition` `{"until": "2026-12-31T23:00:00Z" | null}` (administrateur du serveur) → état ; journal `admin` / `transition_changed` ; temps réel sur tous les canaux : `{"type": "transition.changed", "data": {…état…}}`.
+
+## Migration 0031 (organisations de départ)
+- Groupes : **FNRASEC** › **ADRASEC 78** (module ADRASEC) › **PCO ADRASEC 78** (organisateurs des événements d'ADRASEC 78), **VCMB**, **LGA** (identifiants `fnrasec`, `adrasec-78`, `pco-adrasec-78`, `vcmb`, `lga` ; un groupe de même nom court créé entre-temps est repris).
+- Tous les événements existants : organisés par ADRASEC 78.
+- Listes du 28 octobre : les **administrateurs** deviennent membres d'« Administrateurs du serveur », les **PCO** membres de « PCO ADRASEC 78 » (comptes créés pour leurs adresses) ; les listes d'origine sont gardées dans le réglage `roles.before`.
+- `GET/PUT /api/v0.1/admin/roles` (console existante) lisent et écrivent désormais ces deux groupes (`"groups": {"admins": "server-admins", "pco": "pco-adrasec-78"}`) ; retirer le dernier administrateur actif : 422 `last_admin`.

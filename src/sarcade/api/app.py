@@ -57,6 +57,8 @@ from sarcade.files import folders as file_folders
 from . import roles as roles_api
 from . import auth as auth_api
 from . import directory as directory_api
+from . import event_access as event_access_api
+from .event_access import guard_event
 from sarcade.accounts.caller import resolve as resolve_caller
 from sarcade import roles as user_roles
 from . import tv as tv_api
@@ -91,7 +93,7 @@ async def lifespan(_app):
 # Every route knows its caller: enrolled device, Cloudflare Access or nobody
 # (lot 26, sarcade.accounts.caller).
 app = FastAPI(title="SARCADE Server", version="0.1.0-dev", lifespan=lifespan,
-              dependencies=[Depends(resolve_caller)])
+              dependencies=[Depends(resolve_caller), Depends(guard_event)])
 
 
 @app.middleware("http")
@@ -137,6 +139,7 @@ app.include_router(file_folders_api.router)
 app.include_router(roles_api.router)
 app.include_router(auth_api.router)
 app.include_router(directory_api.router)
+app.include_router(event_access_api.router)
 app.include_router(tv_api.router)
 module_loader.load()
 for _router in module_hooks.routers:
@@ -151,8 +154,10 @@ def health():
 
 
 @app.post("/api/v0.1/events", response_model=EventOut, status_code=201)
-def create_event(payload: EventCreate, db: Session = Depends(get_db), _pco=Depends(roles_api.require_pco)):
+def create_event(payload: EventCreate, request: Request, db: Session = Depends(get_db),
+                 _pco=Depends(roles_api.require_pco)):
     now = datetime.now(UTC)
+    organizer = event_access_api.organizer_for_new_event(db, request, payload.organizer_group_id)
     # Modules of the event: asked, or those of its event model (31 Oct 2026).
     try:
         mods = modules.clean(payload.modules) if payload.modules is not None else modules.for_kind(payload.kind)
@@ -163,8 +168,9 @@ def create_event(payload: EventCreate, db: Session = Depends(get_db), _pco=Depen
     if modules.is_sater_kind(payload.kind) and "adrasec" in mods:
         settings["sater"] = True
     row = EventRow(id=str(uuid.uuid4()), name=payload.name, kind=payload.kind, summary=payload.summary,
-                   status="draft", created_at=now, version=0, settings=settings)
+                   status="draft", created_at=now, version=0, settings=settings, organizer_group_id=organizer)
     db.add(row); db.flush()
+    event_access_api.invite_at_creation(db, request, row, payload.invited_group_ids, now)
     # Base channels (« Tous », « Diffusion PCO »), created when the event opens.
     groups_api.ensure_groups(db, row.id, groups.default_groups(row.id, now), now)
     db.add(LogbookRow(event_id=row.id, kind="group", object_id=None, actor_id="PCO", time=now,
@@ -723,9 +729,11 @@ async def synchronize(operations: list[dict], request: Request, db: Session = De
     identity = identity_of(request)
     seen_actors: set[tuple[str, str]] = set()
     notices: dict[str, routes_api.Notices] = {}
-    # PCO by the email checked by Cloudflare Access (move orders).
+    # PCO by the email checked by Cloudflare Access or the account of the
+    # enrolled device (move orders); per event with the directory (lot 26).
     email = roles_api.checked_email(request)
-    pco = email is not None and "pco" in user_roles.roles_of(db, email)
+    pco_any = email is not None and "pco" in user_roles.roles_of(db, email)
+    access = event_access_api.SyncAccess(db, request) if user_roles.directory_ready(db) else None
     for raw in operations:
         operation_id = str(raw.get("operation_id") or "")[:64] if isinstance(raw, dict) else ""
         try:
@@ -739,6 +747,13 @@ async def synchronize(operations: list[dict], request: Request, db: Session = De
             results.append(_sync_result(op.operation_id, "unknown_event",
                                         reason=f"événement {op.event_id} inconnu de ce serveur"))
             continue
+        pco = pco_any
+        if access is not None:
+            refusal = access.refusal(op)
+            if refusal is not None:
+                results.append(_sync_result(op.operation_id, "rejected", reason=refusal))
+                continue
+            pco = access.pco(op.event_id, pco_any)
         now = datetime.now(UTC)
         try:
             with db.begin_nested():

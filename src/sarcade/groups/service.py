@@ -45,7 +45,10 @@ DEFAULT_GROUPS = (
 
 
 def is_pco(actor_id: str | None) -> bool:
-    return bool(actor_id) and (actor_id == "PCO" or actor_id.startswith("PCO-"))
+    """PCO recognised by its name (``PCO``, ``PCO-…``): only during the
+    transition period of the habilitations (lot 26, sarcade.directory.transition)."""
+    from sarcade.directory import transition
+    return bool(actor_id) and (actor_id == "PCO" or actor_id.startswith("PCO-")) and transition.active()
 
 
 def default_group_id(event_id: str, key: str) -> str:
