@@ -29,6 +29,7 @@ services:
       SARCADE_ALTIMETRY_URL: http://services-stub:8080/altimetrie/elevation.json
       # Updates and security: releases API and SIEM collector stand-ins.
       SARCADE_RELEASES_URL: http://services-stub:8080/releases/latest
+      SARCADE_WINDOWS_RELEASE_URL: http://services-stub:8080/windows-dev
       SARCADE_ADMIN_TOKEN: demo-admin-token
       SARCADE_SERVER_ID: sarcade-demo
       # Pro module « siem » enabled by an ephemeral test licence (make_test_licence.py).
