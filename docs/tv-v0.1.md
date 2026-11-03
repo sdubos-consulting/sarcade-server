@@ -54,9 +54,9 @@ Vérification : `tests/test_tv.py`, `demo/verify_map_features.py`.
 
 Vérification : `tests/test_tv.py`, `demo/verify_tv.py`.
 
+## Points d'écoute SATER (lot 24, 3 novembre 2026)
+- État : `listening` (`[{"id", "lat", "lon", "heard_at", "heading_deg"?, "exercise", "by"}]`), renvoyé avec les relevés quand `features_rev` change, vide quand la couche Relevés est masquée. Dessin : anneau orange `#FF9F1C` (pointillé en exercice), trait du cap du véhicule, étiquette « Écoute HH:MM » ; entrée « Point d'écoute » de la légende. Voir `map-features-v0.1.md`.
+
 ## Bouton « Écrans » de la carte (lot 11, 30 octobre 2026)
 - `GET /api/v0.1/events/{event_id}/displays` donne en plus `mine` : écran appairé par l'appelant (e-mail vérifié = `owner`) ; sans e-mail vérifié (réseau local sans Access), tous les écrans comptent. L'application n'affiche le bouton « Écrans » que s'il existe au moins un écran actif `mine` (PCO et admin : tout écran actif de l'événement).
 - `PUT …/displays/{display_id}/view` accepte `live: true` (« Suivre ma vue ») : la vue suit la carte de l'expéditeur ; seule la première vue d'un suivi va en main courante (« Vue suivie en direct sur l'écran »), les suivantes non. Un envoi sans `live` ou `view: null` termine le suivi.
-
-## Points d'écoute SATER (lot 24, 3 novembre 2026)
-- État : `listening` (`[{"id", "lat", "lon", "heard_at", "heading_deg"?, "exercise", "by"}]`), renvoyé avec les relevés quand `features_rev` change, vide quand la couche Relevés est masquée. Dessin : anneau orange `#FF9F1C` (pointillé en exercice), trait du cap du véhicule, étiquette « Écoute HH:MM » ; entrée « Point d'écoute » de la légende. Voir `map-features-v0.1.md`.
