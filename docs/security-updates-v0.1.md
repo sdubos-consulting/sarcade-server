@@ -115,6 +115,29 @@ server on a network without Internet: `PUT /admin/clients/{platform}/package`,
 `GET /clients/latest`, `GET /clients/{platform}/package` (SHA-256 given; the
 client checks the platform signature before installing).
 
+### Windows installer taken from GitHub (lot 25)
+
+`POST /admin/clients/windows/fetch` (administrator) takes the installer of the
+`windows-dev` pre-release of `sarcade-app` and makes it the Windows package of
+the server, so the clients update from the local network without Internet:
+
+1. `sarcade-windows-version.json` (written by the CI of `sarcade-app`):
+   `{"version": "0.1.0+960", "build": "main@abc1234", "sha256": "…", "size": 123}`;
+2. `sarcade-windows-setup.exe`, kept only when its size and SHA-256 match the
+   manifest (else 502 `windows_fetch_failed` with the reason, the package
+   already distributed is kept);
+3. nothing downloaded when the published SHA-256 is the one already served
+   (`"changed": false`).
+
+Answer: the package as in `GET /clients/latest` (`build` added) and `changed`.
+Journal: `admin.client_package_fetched`. Address of the pre-release:
+`SARCADE_WINDOWS_RELEASE_URL` (default
+`https://github.com/sdubos-consulting/sarcade-app/releases/download/windows-dev`).
+
+The Windows client (Paramètres › À propos › Mise à jour) asks
+`GET /clients/latest` first, then GitHub when the server does not answer or
+has no Windows package; it checks the SHA-256 before a silent install.
+
 ### Version published on the stores (phones)
 
 Android and iPhone are not updated by the local server but by Google Play
