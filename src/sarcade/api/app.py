@@ -56,6 +56,7 @@ from . import file_folders as file_folders_api
 from sarcade.files import folders as file_folders
 from . import roles as roles_api
 from . import auth as auth_api
+from . import directory as directory_api
 from sarcade.accounts.caller import resolve as resolve_caller
 from sarcade import roles as user_roles
 from . import tv as tv_api
@@ -135,6 +136,7 @@ app.include_router(personal_files_api.router)
 app.include_router(file_folders_api.router)
 app.include_router(roles_api.router)
 app.include_router(auth_api.router)
+app.include_router(directory_api.router)
 app.include_router(tv_api.router)
 module_loader.load()
 for _router in module_hooks.routers:

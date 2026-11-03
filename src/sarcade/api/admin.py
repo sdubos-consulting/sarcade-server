@@ -61,12 +61,26 @@ def require_admin(request: Request, db: Session = Depends(get_db)) -> str:
     return "admin"
 
 
+def require_journal_reader(request: Request, db: Session = Depends(get_db)) -> str:
+    """Administrator, or auditor of the server (lot 26): reads the journal
+    without changing anything."""
+    from sarcade import roles
+    from sarcade.accounts.caller import caller_of
+    caller = caller_of(request)
+    if caller.email is not None and roles.directory_ready(db):
+        from sarcade.directory import rights
+        r = rights.of(db, caller.user_id, caller.email)
+        if any(g.right == "auditor" and g.scope_group_id is None for g in r.grants):
+            return caller.email
+    return require_admin(request, db)
+
+
 # --- Security journal -------------------------------------------------------
 
 @router.get("/admin/security-journal")
 def security_journal(category: str | None = None, since: datetime | None = None,
                      before_seq: int | None = None, limit: int = Query(200, ge=1, le=1000),
-                     _admin: str = Depends(require_admin), db: Session = Depends(get_db)):
+                     _admin: str = Depends(require_journal_reader), db: Session = Depends(get_db)):
     stmt = select(SecurityEventRow).order_by(SecurityEventRow.seq.desc()).limit(limit)
     if category:
         stmt = stmt.where(SecurityEventRow.category == category)
@@ -78,7 +92,7 @@ def security_journal(category: str | None = None, since: datetime | None = None,
 
 
 @router.get("/admin/security-journal/verify")
-def verify_journal(_admin: str = Depends(require_admin), db: Session = Depends(get_db)):
+def verify_journal(_admin: str = Depends(require_journal_reader), db: Session = Depends(get_db)):
     return journal.verify(db)
 
 

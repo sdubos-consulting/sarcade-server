@@ -466,3 +466,67 @@ class AuthDeviceRow(Base):
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_by: Mapped[str | None] = mapped_column(String(64))
+
+
+# --- Directory: organisation groups and habilitations (lot 26) --------------
+
+class OrgGroupRow(Base):
+    """Organisation group (not a communication group). ``parent_id`` is the
+    attachment (tree, one parent: who administers); memberships between
+    groups are in ``org_group_groups`` (who inherits the rights). Groups
+    without parent are the organisations, except the system groups
+    (Public, Administrateurs du serveur)."""
+    __tablename__ = "org_groups"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=new_id)
+    short_name: Mapped[str] = mapped_column(String(40), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    color: Mapped[str | None] = mapped_column(String(9))
+    parent_id: Mapped[str | None] = mapped_column(ForeignKey("org_groups.id"), index=True)
+    system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_by: Mapped[str | None] = mapped_column(String(64))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_by: Mapped[str | None] = mapped_column(String(64))
+
+
+class OrgGroupUserRow(Base):
+    """A user member of a group (directly)."""
+    __tablename__ = "org_group_users"
+    group_id: Mapped[str] = mapped_column(ForeignKey("org_groups.id"), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True, index=True)
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    added_by: Mapped[str | None] = mapped_column(String(64))
+
+
+class OrgGroupGroupRow(Base):
+    """A group member of another group (nested groups, no cycle)."""
+    __tablename__ = "org_group_groups"
+    group_id: Mapped[str] = mapped_column(ForeignKey("org_groups.id"), primary_key=True)
+    member_id: Mapped[str] = mapped_column(ForeignKey("org_groups.id"), primary_key=True, index=True)
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    added_by: Mapped[str | None] = mapped_column(String(64))
+
+
+class OrgInvitationRow(Base):
+    """Address added to a group before the person has an account; becomes
+    a membership at the first connection."""
+    __tablename__ = "org_invitations"
+    group_id: Mapped[str] = mapped_column(ForeignKey("org_groups.id"), primary_key=True)
+    email: Mapped[str] = mapped_column(String(320), primary_key=True, index=True)
+    invited_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    invited_by: Mapped[str | None] = mapped_column(String(64))
+
+
+class HabilitationRow(Base):
+    """Right given to a group (never to a person): administration right on
+    a scope (group, or the server when ``scope_group_id`` is empty) or
+    access to a module; positive only, optional end date."""
+    __tablename__ = "habilitations"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=new_id)
+    group_id: Mapped[str] = mapped_column(ForeignKey("org_groups.id"), nullable=False, index=True)
+    right: Mapped[str] = mapped_column(String(40), nullable=False)
+    scope_group_id: Mapped[str | None] = mapped_column(ForeignKey("org_groups.id"))
+    until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    granted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    granted_by: Mapped[str | None] = mapped_column(String(64))

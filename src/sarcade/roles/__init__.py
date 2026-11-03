@@ -6,6 +6,7 @@ server settings; rule: always at least one active administrator
 from __future__ import annotations
 
 import os
+import weakref
 
 from sqlalchemy.orm import Session
 
@@ -51,14 +52,47 @@ def save(db: Session, admins, pco) -> dict:
     return {"admins": a, "pco": p}
 
 
+def directory_ready(db) -> bool:
+    """The directory tables exist (always on PostgreSQL after the
+    migrations; some unit tests run on a partial SQLite database)."""
+    if not hasattr(db, "scalars"):
+        return False
+    try:
+        bind = db.get_bind()
+        if bind.dialect.name == "postgresql":
+            return True
+        if bind not in _ready:
+            from sqlalchemy import inspect
+            # Through the connection of the session: never ends its transaction.
+            insp = inspect(db.connection())
+            _ready[bind] = insp.has_table("org_groups") and insp.has_table("users")
+        return _ready[bind]
+    except Exception:  # noqa: BLE001
+        return False
+
+
+_ready: "weakref.WeakKeyDictionary" = weakref.WeakKeyDictionary()
+PCO_RIGHTS = ("event_organizer", "group_admin")
+
+
 def roles_of(db: Session, email: str | None) -> list[str]:
+    """« admin » (administrator of the server) and « pco » (organiser of
+    events), from the lists of 28 October, the .env, or the habilitations of
+    the directory (lot 26)."""
     if not email:
         return []
     e = email.strip().lower()
     s = stored(db)
+    admin = e in s["admins"] or e in env_admins()
+    pco = e in s["pco"]
+    if not admin and directory_ready(db):
+        from sarcade.directory import rights
+        r = rights.for_email(db, e)
+        admin = r.server_admin
+        pco = pco or any(g.right in PCO_RIGHTS for g in r.grants)
     out = []
-    if e in s["admins"] or e in env_admins():
+    if admin:
         out.append("admin")
-    if e in s["pco"] or "admin" in out:
+    if pco or admin:
         out.append("pco")
     return out
