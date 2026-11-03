@@ -105,7 +105,7 @@ if len(admins) == 1:
     check(r.status_code == 409 and r.json()["detail"]["error"] == "last_admin", "last administrator kept")
 rows = c.get(f"{API}/admin/security-journal", headers=ADMIN, params={"category": "rights"}).json()
 actions = {r["action"] for r in rows}
-check({"member_added", "habilitation_granted", "group_member_added", "invitation_accepted",
+check({"invitation_added", "habilitation_granted", "group_member_added", "invitation_accepted",
        "directory_refused"} <= actions, "changes and refusals in the security journal")
 check(c.get(f"{API}/admin/security-journal/verify", headers=ADMIN).json()["ok"], "security journal chain intact")
 print("directory: all checks passed")
