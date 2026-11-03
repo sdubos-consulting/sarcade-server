@@ -16,6 +16,7 @@ from sarcade.updates import service as updates_service
 from sarcade.domain import callsigns as calls
 from sarcade.db.models import DeviceRow, EventRow, LogbookRow
 from sarcade.events import contacts as event_contacts
+from sarcade.events import operator_status
 from sarcade.events import settings as event_settings
 from sarcade.profile.preferences import OPERATOR_ICONS
 from sarcade.realtime.manager import manager
@@ -87,6 +88,10 @@ def device_dict(row: DeviceRow, settings: dict, now: datetime) -> dict:
         # Same as last_contact_at, under the name used by the operators list.
         "last_seen": utc(row.last_contact_at),
         "status": event_settings.device_status(row.last_contact_at, settings, now),
+        # Status chosen by the operator (lot 24), not to be confused with
+        # « status » above (contact of the device).
+        "operator_status": row.operator_status,
+        "operator_status_at": utc(row.operator_status_at),
     }
 
 
@@ -106,6 +111,23 @@ def touch_device(db: Session, event_id: str, device_id: str, now: datetime, *,
     if battery_pct is not None:
         row.battery_pct = battery_pct
     return row
+
+
+def set_operator_status(db: Session, event_id: str, device_id: str, status, at, now: datetime,
+                        actor_id: str | None = None) -> tuple[bool, DeviceRow]:
+    """Status of an operator in one touch (lot 24): applied when newer than
+    the stored one (a status queued offline never replaces a later one),
+    with a logbook line when it changes. Raises InvalidStatus."""
+    status = operator_status.clean(status)
+    at = operator_status.parse_time(at, now)
+    row = touch_device(db, event_id, device_id, now)
+    if not operator_status.apply(row, status, at):
+        return False, row
+    who = row.label or row.callsign or device_id
+    db.add(LogbookRow(event_id=event_id, kind="operator_status", object_id=device_id[:64],
+                      actor_id=(actor_id or device_id)[:64], time=now,
+                      summary=operator_status.logbook_summary(who, status)))
+    return True, row
 
 
 def _event_or_404(db: Session, event_id: str) -> EventRow:
@@ -251,6 +273,45 @@ async def heartbeat(event_id: str, device_id: str, payload: Heartbeat, db: Sessi
         "client_update": client_update,
         "organization": updates_service.client_organization(db),
     }
+
+
+class OperatorStatusIn(BaseModel):
+    # en_route, sur_place, disponible, pause; null removes the status.
+    status: str | None = Field(default=None, max_length=16)
+    # Time the operator chose it (device clock); absent: now.
+    at: datetime | None = None
+    actor_id: str | None = Field(default=None, max_length=64)
+
+
+@router.put("/events/{event_id}/devices/{device_id}/status")
+async def put_operator_status(event_id: str, device_id: str, payload: OperatorStatusIn,
+                              db: Session = Depends(get_db)):
+    """« Mon statut » (card « Android Auto : statut en un appui », lot 24).
+    Answer: the stored state, ``changed`` false when an older status was
+    sent after a newer one. Realtime: ``operator.status``."""
+    if not 1 <= len(device_id) <= 64:
+        raise HTTPException(status_code=422, detail="invalid_device_id")
+    _event_or_404(db, event_id)
+    now = datetime.now(UTC)
+    try:
+        changed, row = set_operator_status(db, event_id, device_id, payload.status, payload.at, now,
+                                           payload.actor_id)
+    except operator_status.InvalidStatus as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    db.commit()
+    data = operator_status.state(row)
+    if changed:
+        await manager.broadcast(event_id, {"type": "operator.status", "data": data})
+    return {**data, "changed": changed}
+
+
+@router.get("/events/{event_id}/operator-statuses")
+def list_operator_statuses(event_id: str, db: Session = Depends(get_db)):
+    """Status of every operator of the event that has one."""
+    _event_or_404(db, event_id)
+    rows = db.scalars(select(DeviceRow).where(DeviceRow.event_id == event_id,
+                                              DeviceRow.operator_status.is_not(None))).all()
+    return [operator_status.state(r) for r in rows]
 
 
 @router.get("/events/{event_id}/devices")

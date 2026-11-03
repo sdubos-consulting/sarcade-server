@@ -48,6 +48,9 @@ class PositionOut(PositionCreate):
     aprs_symbol: str | None = None
     aprs_path: str | None = None
     callsign: str | None = None
+    # Status of the operator (lot 24), latest positions only.
+    operator_status: str | None = None
+    operator_status_at: datetime | None = None
 
 
 class POICreate(BaseModel):

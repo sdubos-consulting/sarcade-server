@@ -1,6 +1,9 @@
 from geoalchemy2.shape import to_shape
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-from sarcade.db.models import POIRow, PositionRow, ReferenceSiteRow
+from sarcade.db.models import DeviceRow, POIRow, PositionRow, ReferenceSiteRow
+from sarcade.events import operator_status
 
 
 def position_dict(row: PositionRow) -> dict:
@@ -14,6 +17,17 @@ def position_dict(row: PositionRow) -> dict:
         "aprs_via": row.aprs_via, "aprs_symbol": row.aprs_symbol, "aprs_path": row.aprs_path,
         "callsign": row.aprs_callsign,
     }
+
+
+def with_operator_status(db: Session, event_id: str, positions: list[dict]) -> list[dict]:
+    """Latest positions with the status of each operator (lot 24)."""
+    states = {d.device_id: operator_status.state(d) for d in db.scalars(select(DeviceRow).where(
+        DeviceRow.event_id == event_id, DeviceRow.operator_status.is_not(None))).all()}
+    for p in positions:
+        s = states.get(p["device_id"])
+        p["operator_status"] = s["operator_status"] if s else None
+        p["operator_status_at"] = s["operator_status_at"] if s else None
+    return positions
 
 
 def poi_dict(row: POIRow) -> dict:

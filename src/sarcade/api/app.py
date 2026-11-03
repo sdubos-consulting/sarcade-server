@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from sarcade.db.models import AckRow, EventRow, LogbookRow, MapFeatureRow, MessageRow, POIRow, PositionRow, SharedFileRow, SyncOperationRow, TeamRow
 from sarcade.realtime.manager import manager
 from .schemas import EventCreate, EventOut, POICreate, POIOut, PositionCreate, PositionOut, SyncOperationIn, SyncResultOut, TeamCreate, TeamOut
-from .serializers import poi_dict, position_dict
+from .serializers import poi_dict, position_dict, with_operator_status
 from sarcade.sync.service import VALID_TYPES, record_operation
 from sarcade.features import service as features
 from sarcade.messages import attachments as msg_attachments
@@ -58,6 +58,7 @@ from sarcade import roles as user_roles
 from . import tv as tv_api
 from sarcade.wakeup import service as wakeup_service
 from sarcade.events import contacts as event_contacts
+from sarcade.events import operator_status
 from . import diagnostics as diagnostics_api
 from . import sbom as sbom_api
 from sarcade import diagnostics
@@ -226,7 +227,7 @@ def latest_positions(event_id: str, db: Session = Depends(get_db)):
         partition_by=PositionRow.device_id, order_by=PositionRow.time.desc()).label("rn")
     ).where(PositionRow.event_id == event_id).subquery()
     rows = db.scalars(select(PositionRow).join(ranked, PositionRow.id == ranked.c.id).where(ranked.c.rn == 1)).all()
-    return [position_dict(row) for row in rows]
+    return with_operator_status(db, event_id, [position_dict(row) for row in rows])
 
 
 @app.get("/api/v0.1/events/{event_id}/devices/{device_id}/positions", response_model=list[PositionOut])
@@ -515,6 +516,8 @@ def _apply_operation(db: Session, op: SyncOperationIn, now: datetime,
         return groups_api.apply_group(db, op, now)
     if op.object_type == "poi" and op.action in ("update", "delete"):
         return _apply_poi_change(db, op, now, pco)
+    if op.object_type == "operator_status":
+        return _apply_operator_status(db, op, now)
     if op.object_type not in VALID_TYPES:
         raise SyncRejected(f"type d'élément inconnu : {op.object_type}")
     if op.object_type == "message" and op.action == "create":
@@ -590,6 +593,35 @@ def _apply_operation(db: Session, op: SyncOperationIn, now: datetime,
         return status, cursor, {"type": "ack.created", "data": p}
     return status, cursor, None
 
+
+
+def _apply_operator_status(db: Session, op: SyncOperationIn, now: datetime) -> tuple[str, int, dict | None]:
+    """« Mon statut » queued offline (lot 24): ``action`` update, ``object_id``
+    = ``device_id``, charge ``{device_id, status, at}``. An older status than
+    the stored one answers ``conflict``."""
+    p = op.payload
+    device_id = str(p.get("device_id") or "")
+    if op.action != "update" or device_id != op.object_id or not 1 <= len(device_id) <= 64:
+        raise SyncRejected("statut d'opérateur mal formé")
+    try:
+        status = operator_status.clean(p.get("status"))
+        at = operator_status.parse_time(p.get("at"), now)
+    except operator_status.InvalidStatus:
+        raise SyncRejected("statut d'opérateur inconnu")
+    result, cursor = record_operation(
+        db, event_id=op.event_id, operation_id=op.operation_id, object_id=op.object_id,
+        object_type="operator_status", action="update", payload=p, client_time=op.client_time)
+    if result != "accepted":
+        return result, cursor, None
+    journal = db.scalar(select(SyncOperationRow).where(SyncOperationRow.seq == cursor))
+    changed, row = event_ops.set_operator_status(db, op.event_id, device_id, status, at, now,
+                                                 str(p.get("actor_id") or "") or None)
+    data = operator_status.state(row)
+    journal.payload = data
+    if not changed:
+        journal.status = "conflict"
+        return "conflict", cursor, None
+    return "accepted", cursor, {"type": "operator.status", "data": data}
 
 
 def _apply_message_delete(db: Session, op: SyncOperationIn, now: datetime, pco: bool) -> tuple[str, int, dict | None]:
