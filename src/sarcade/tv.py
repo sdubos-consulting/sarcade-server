@@ -475,7 +475,8 @@ def _time(value) -> datetime | None:
 
 def apply_view(snap: dict, view: dict | None, now: datetime, *, weather: dict | None = None,
                drawings: list | None = None, bearings: list | None = None,
-               references: list | None = None, zone_modes: dict | None = None) -> dict:
+               references: list | None = None, zone_modes: dict | None = None,
+               listening: list | None = None) -> dict:
     """Keeps in the snapshot only what the layers of the view show;
     ``zone_modes``: mode of each searched signal (settings of the event)."""
     opts = display_options(view)
@@ -499,6 +500,9 @@ def apply_view(snap: dict, view: dict | None, now: datetime, *, weather: dict | 
     if bearings is not None:
         out["bearings"] = bearings if layers["bearings"] else []
         out["zones"] = probable_zones(out["bearings"], zone_modes)
+    # Listening points SATER (lot 24): with the bearings layer.
+    if listening is not None:
+        out["listening"] = listening if layers["bearings"] else []
     if references is not None:
         out["references"] = [r for r in references
                              if (r.get("category") == "HIGH_POINT" and layers["highpoints"])
@@ -572,6 +576,20 @@ def unify_searches(bearings: list[dict]) -> list[dict]:
     for b in bearings:
         name = latest[search_key(b.get("search"))]
         out.append(b if b.get("search") == name else {**b, "search": name, "color": search_color(name)})
+    return out
+
+
+def tv_listening(feature: dict) -> dict | None:
+    """Listening point SATER as drawn by the TV: place, time heard, heading
+    of the vehicle, exercise, author."""
+    points = feature.get("points") or []
+    if not points:
+        return None
+    li = feature.get("listening") or {}
+    out = {"id": feature.get("id"), "lat": points[0][0], "lon": points[0][1], "heard_at": li.get("heard_at"),
+           "exercise": bool(li.get("exercise")), "by": feature.get("created_by") or ""}
+    if li.get("heading_deg") is not None:
+        out["heading_deg"] = li["heading_deg"]
     return out
 
 

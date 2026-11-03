@@ -149,8 +149,12 @@ def create_event(payload: EventCreate, db: Session = Depends(get_db), _pco=Depen
         mods = modules.clean(payload.modules) if payload.modules is not None else modules.for_kind(payload.kind)
     except modules.InvalidModules as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    settings = {"modules": mods}
+    # Event of kind « sater » (lot 24): « Signal entendu ici » offered at once.
+    if modules.is_sater_kind(payload.kind) and "adrasec" in mods:
+        settings["sater"] = True
     row = EventRow(id=str(uuid.uuid4()), name=payload.name, kind=payload.kind, summary=payload.summary,
-                   status="draft", created_at=now, version=0, settings={"modules": mods})
+                   status="draft", created_at=now, version=0, settings=settings)
     db.add(row); db.flush()
     # Base channels (« Tous », « Diffusion PCO »), created when the event opens.
     groups_api.ensure_groups(db, row.id, groups.default_groups(row.id, now), now)
@@ -159,6 +163,9 @@ def create_event(payload: EventCreate, db: Session = Depends(get_db), _pco=Depen
     names = ", ".join(modules.MODULES[m]["label"] for m in mods) or "aucun (Core seul)"
     db.add(LogbookRow(event_id=row.id, kind="settings", object_id=row.id, actor_id="PCO", time=now,
                       summary=f"Modules de l'événement : {names}"))
+    if settings.get("sater"):
+        db.add(LogbookRow(event_id=row.id, kind="settings", object_id=row.id, actor_id="PCO", time=now,
+                          summary="Mission ou exercice SATER : bouton « Signal entendu ici » proposé"))
     db.commit(); db.refresh(row)
     return row
 
@@ -347,7 +354,7 @@ async def event_websocket(websocket: WebSocket, event_id: str):
         manager.disconnect(event_id, websocket)
 
 
-def _apply_map_feature(db: Session, op, now: datetime) -> tuple[str, int, dict | None]:
+def _apply_map_feature(db: Session, op, now: datetime, pco: bool = False) -> tuple[str, int, dict | None]:
     """Validates, journals and applies one map feature change (ADR-001).
 
     Returns (status, cursor, broadcast payload). Only accepted changes are
@@ -365,9 +372,10 @@ def _apply_map_feature(db: Session, op, now: datetime) -> tuple[str, int, dict |
     event = db.get(EventRow, op.event_id)
     if event is None:
         return "rejected", 0, None
-    # Bearings belong to the ADRASEC module: refused in an event without it
-    # (31 Oct 2026); deleting an older one stays possible.
-    if op.action != "delete" and (op.payload or {}).get("kind") == "bearing" \
+    # Bearings and listening points (lot 24) belong to the ADRASEC module:
+    # refused in an event without it (31 Oct 2026); deleting an older one
+    # stays possible.
+    if op.action != "delete" and (op.payload or {}).get("kind") in ("bearing", "listening") \
             and not modules.enabled(event.settings, "adrasec"):
         return "rejected", 0, None
     change["updated_at"] = features.clamp_time(change["updated_at"], now)
@@ -385,9 +393,15 @@ def _apply_map_feature(db: Session, op, now: datetime) -> tuple[str, int, dict |
         journal.status = "rejected"
         return "rejected", 0, None
     # A bearing is changed or deleted by its author or the PCO only
-    # (note « Relevés et croisements », decision 5).
-    if row is not None and row.kind == "bearing" and change["updated_by"] != row.created_by \
-            and not groups.is_pco(change["updated_by"]):
+    # (note « Relevés et croisements », decision 5); a listening point too,
+    # and its author deletes it only within 10 s (« Annuler », lot 24).
+    is_pco = pco or groups.is_pco(change["updated_by"])
+    if row is not None and row.kind in ("bearing", "listening") and change["updated_by"] != row.created_by \
+            and not is_pco:
+        journal.status = "rejected"
+        return "rejected", 0, None
+    if row is not None and row.kind == "listening" and op.action == "delete" and not is_pco \
+            and row.deleted_at is None and not features.listening_cancel_allowed(row.data or {}, change["updated_at"]):
         journal.status = "rejected"
         return "rejected", 0, None
     decision = features.decide(op.action, change, row)
@@ -437,8 +451,10 @@ def _apply_map_feature(db: Session, op, now: datetime) -> tuple[str, int, dict |
     if logbook_action:
         db.add(LogbookRow(event_id=op.event_id, kind="map_feature", object_id=row.id,
             actor_id=change["updated_by"], time=now,
-            summary=features.logbook_summary(row.kind, (row.data or {}).get("label", ""), logbook_action,
-                                             exercise=bool(((row.data or {}).get("bearing") or {}).get("exercise")))))
+            summary=features.logbook_summary(
+                row.kind, (row.data or {}).get("label", ""), logbook_action,
+                exercise=bool(((row.data or {}).get(row.kind) or {}).get("exercise")),
+                author=row.created_by, heading=((row.data or {}).get("listening") or {}).get("heading_deg"))))
     kind = "map_feature.deleted" if row.deleted_at is not None else "map_feature.upserted"
     return "accepted", cursor, {"type": kind, "data": result}
 
@@ -511,7 +527,7 @@ def _apply_operation(db: Session, op: SyncOperationIn, now: datetime,
         batch = (notices if notices is not None else {}).setdefault(op.event_id, routes_api.Notices())
         return routes_api.apply_route_object(db, op, now, batch, pco=pco)
     if op.object_type == "map_feature":
-        return _apply_map_feature(db, op, now)
+        return _apply_map_feature(db, op, now, pco)
     if op.object_type == "comm_group":
         return groups_api.apply_group(db, op, now)
     if op.object_type == "poi" and op.action in ("update", "delete"):

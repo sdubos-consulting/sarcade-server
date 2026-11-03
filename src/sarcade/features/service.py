@@ -15,8 +15,19 @@ import math
 
 # « bearing »: radio direction-finding bearing (note « Relevés et croisements »):
 # the point is where it was taken, the line is drawn by the clients.
-KINDS = {"point", "line", "arrow", "circle", "rectangle", "zone", "text", "freehand", "measure", "bearing"}
-POINT_KINDS = {"point", "text", "circle", "bearing"}
+# « listening »: listening point SATER (« Signal entendu ici », lot 24): a
+# beacon heard at this place, without azimuth (« relevé sans azimut »).
+KINDS = {"point", "line", "arrow", "circle", "rectangle", "zone", "text", "freehand", "measure", "bearing",
+         "listening"}
+POINT_KINDS = {"point", "text", "circle", "bearing", "listening"}
+# Default style of a listening point sent from the car in one touch.
+LISTENING_COLOR = 0xFFFF9F1C
+LISTENING_STROKE = 2.0
+# Its author may cancel it (delete) during 10 s after the time it was heard
+# (« Annuler » on the confirmation alert), with 5 s of margin for the
+# network; the PCO may delete it at any time.
+LISTENING_CANCEL_S = 10
+LISTENING_CANCEL_GRACE_S = 5
 POLYGON_KINDS = {"rectangle", "zone"}
 ACTIONS = {"create", "update", "delete"}
 
@@ -87,9 +98,13 @@ def validate_upsert(payload: dict, *, event_id: str, object_id: str) -> dict:
     else:
         radius = None
     color = payload.get("color")
-    if not isinstance(color, int) or not (0 <= color <= 0xFFFFFFFF):
+    if kind == "listening" and color is None:
+        color = LISTENING_COLOR
+    if isinstance(color, bool) or not isinstance(color, int) or not (0 <= color <= 0xFFFFFFFF):
         raise InvalidFeature("invalid_color")
     width = payload.get("stroke_width")
+    if kind == "listening" and width is None:
+        width = LISTENING_STROKE
     if not isinstance(width, (int, float)) or not (0.5 <= width <= 30):
         raise InvalidFeature("invalid_stroke_width")
     label = payload.get("label") or ""
@@ -100,6 +115,8 @@ def validate_upsert(payload: dict, *, event_id: str, object_id: str) -> dict:
         raise InvalidFeature("invalid_updated_by")
     created_by = payload.get("created_by") if isinstance(payload.get("created_by"), str) else updated_by
     extra = {"bearing": validate_bearing(payload.get("bearing"))} if kind == "bearing" else {}
+    if kind == "listening":
+        extra["listening"] = validate_listening(payload.get("listening"), payload.get("updated_at"))
     # Géorepérage (ATAK 5): the PCO is warned when a team enters or leaves.
     if payload.get("geofence") is True and kind in ("zone", "rectangle", "circle"):
         extra["geofence"] = True
@@ -183,6 +200,47 @@ def validate_bearing(raw) -> dict:
     if raw.get("frequency_mhz") is not None:
         out["frequency_mhz"] = _num(raw.get("frequency_mhz"), 1, 10_000, "invalid_frequency")
     return out
+
+
+def validate_listening(raw, updated_at=None) -> dict:
+    """Listening point SATER: time the signal was heard (``heard_at``,
+    default the time of the change), heading of the vehicle (optional,
+    0–360°), speed, accuracy of the position, exercise, searched signal,
+    frequency and comment (all optional)."""
+    raw = {} if raw is None else raw
+    if not isinstance(raw, dict):
+        raise InvalidFeature("invalid_listening")
+    heard = raw.get("heard_at") or updated_at
+    out = {"heard_at": iso(parse_time(heard))}
+    if raw.get("heading_deg") is not None:
+        out["heading_deg"] = _num(raw.get("heading_deg"), 0, 360, "invalid_heading") % 360
+    if raw.get("speed_mps") is not None:
+        out["speed_mps"] = _num(raw.get("speed_mps"), 0, 150, "invalid_speed")
+    if raw.get("accuracy_m") is not None:
+        out["accuracy_m"] = _num(raw.get("accuracy_m"), 0, 100_000, "invalid_accuracy_m")
+    exercise = raw.get("exercise")
+    if exercise is not None and not isinstance(exercise, bool):
+        raise InvalidFeature("invalid_exercise")
+    if exercise:
+        out["exercise"] = True
+    for key, n in (("search", 80), ("comment", 300)):
+        text = _text(raw.get(key), n, f"invalid_{key}")
+        if text:
+            out[key] = text
+    if raw.get("frequency_mhz") is not None:
+        out["frequency_mhz"] = _num(raw.get("frequency_mhz"), 1, 10_000, "invalid_frequency")
+    return out
+
+
+def listening_cancel_allowed(data: dict, delete_at: datetime) -> bool:
+    """The author cancels his listening point within 10 s (+ 5 s of margin)
+    after the time it was heard (device times, so a cancellation queued
+    offline with its point still counts)."""
+    try:
+        heard = parse_time((data.get("listening") or {}).get("heard_at"))
+    except InvalidFeature:
+        return False
+    return delete_at - heard <= timedelta(seconds=LISTENING_CANCEL_S + LISTENING_CANCEL_GRACE_S)
 
 
 def validate_delete(payload: dict, *, event_id: str, object_id: str) -> dict:
@@ -277,10 +335,20 @@ def feature_geojson(row) -> dict:
         properties["radius_m"] = data["radius_m"]
     if row.kind == "bearing":
         properties.update({f"bearing:{k}": v for k, v in (data.get("bearing") or {}).items()})
+    if row.kind == "listening":
+        properties.update({f"listening:{k}": v for k, v in (data.get("listening") or {}).items()})
     return {"type": "Feature", "id": row.id, "geometry": geometry, "properties": properties}
 
 
-def logbook_summary(kind: str, label: str, action: str, *, exercise: bool = False) -> str:
+def logbook_summary(kind: str, label: str, action: str, *, exercise: bool = False,
+                    author: str = "", heading: float | None = None) -> str:
+    if kind == "listening":
+        cap = f", cap {round(heading) % 360}°" if heading is not None else ""
+        text = {"create": f"Signal de balise entendu ici par {author or '?'}{cap} (point d'écoute)",
+                "delete": f"Point d'écoute de {author or '?'} annulé",
+                "restore": f"Point d'écoute de {author or '?'} rétabli"}.get(action,
+                                                                      f"Point d'écoute de {author or '?'} modifié")
+        return f"EXERCICE · {text}" if exercise else text
     names = {"point": "Point", "line": "Ligne", "arrow": "Flèche", "circle": "Cercle",
              "rectangle": "Rectangle", "zone": "Zone", "text": "Texte", "freehand": "Tracé libre",
              "measure": "Mesure", "bearing": "Relevé"}

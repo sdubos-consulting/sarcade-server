@@ -23,7 +23,8 @@ def test_metric_scale_bottom_left():
 def test_scale_always_above_the_legend():
     page = tv._TV
     # Placed again each time the legend changes (shown, hidden, grown), at start and on resize.
-    assert "$('legend').style.display=keys.length?'block':'none';placeScale();}" in page
+    # Shown for the searched signals or the listening points SATER (lot 24).
+    assert "$('legend').style.display=keys.length||lData.length?'block':'none';placeScale();}" in page
     assert "addTo(map);placeScale();map.on('resize',placeScale);" in page
     body = page.split("function placeScale(){", 1)[1].split("\n", 2)
     code = body[0] + body[1]

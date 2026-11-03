@@ -87,4 +87,24 @@ check(c.get(f"{API}/adsb/status").json()["watched_events"] >= 1, "ADS-B status c
 c.post(f"{API}/events/{fam}/adsb/watch", json={**box, "on": False})
 r = c.get(f"{API}/reference-sites", params={"event_id": off})
 check(r.status_code == 200 and r.json() == [], "no reference site for an event without ADRASEC")
+# Lot 24: mission or exercise SATER, messages types of the car.
+sat = event("sater")
+check(settings(sat)["sater"] is True, "an event of kind sater offers « Signal entendu ici »")
+check(settings(ex)["sater"] is False, "an exercise does not, until the PCO says so")
+r = c.patch(f"{API}/events/{ex}/settings", json={"actor_id": "PCO", "settings": {"sater": True}})
+check(r.status_code == 200 and settings(ex)["sater"] is True, "the PCO marks the exercise SATER")
+r = c.patch(f"{API}/events/{off}/settings", json={"actor_id": "PCO", "settings": {"sater": True}})
+check(r.status_code == 422 and "module_inactive" in r.text, "SATER refused without ADRASEC")
+quick = settings(ex)["car_quick_messages"]
+check([m["text"] for m in quick] == ["Bien reçu", "J'arrive", "Besoin d'aide", "Retard"]
+      and quick[2]["priority"] == "urgent", "default messages types of the car")
+new = [{"text": "En place", "priority": "routine"}, {"text": "Besoin d'aide", "priority": "urgent"}]
+r = c.patch(f"{API}/events/{ex}/settings", json={"actor_id": "PCO", "settings": {"car_quick_messages": new}})
+check(r.status_code == 200 and settings(ex)["car_quick_messages"] == new, "the PCO sets the messages types")
+r = c.patch(f"{API}/events/{ex}/settings", json={"actor_id": "PCO", "settings": {"car_quick_messages": ["a", "b", "c", "d", "e"]}})
+check(r.status_code == 422, "5 messages types refused")
+hb = c.post(f"{API}/events/{ex}/devices/CAR-09/heartbeat", json={"label": "CAR-09", "platform": "android"}).json()
+check(hb["settings"]["car_quick_messages"] == new and hb["settings"]["sater"] is True, "read by every participant")
+log = [e.get("summary") or "" for e in c.get(f"{API}/events/{ex}/logbook").json()]
+check("Messages types de la voiture : En place, Besoin d'aide (urgent)" in log, "messages types in the logbook")
 print("modules per event: all checks passed")

@@ -170,4 +170,33 @@ check(sync(*dels) == ["accepted"] * 3, "3 objects deleted together")
 log = [x["summary"] for x in c.get(f"{BASE}/api/v0.1/events/{event}/logbook").json() if x["object_id"] in [gid, *ids]]
 check(log.count("3 objets supprimés") == 1 and not any("supprimé :" in x for x in log), "one logbook line for the group")
 
+# Lot 24: listening point SATER (« Signal entendu ici »), one touch from the car.
+def listening(lid, at, by="CAR-01"):
+    return {"id": lid, "event_id": event, "kind": "listening", "points": [[48.75, 2.05]], "label": "",
+            "listening": {"heard_at": iso(at), "heading_deg": 135, "speed_mps": 12.5},
+            "created_by": by, "updated_by": by, "updated_at": iso(at)}
+
+
+def gone(lid, at, by="CAR-01"):
+    return dict(op("delete", {"id": lid, "event_id": event, "updated_by": by, "updated_at": iso(at)}), object_id=lid)
+
+
+l1, l2 = str(uuid.uuid4()), str(uuid.uuid4())
+LT = T0 - timedelta(minutes=5)  # in the past: never brought back to the server time
+check(sync(dict(op("create", listening(l1, LT)), object_id=l1)) == ["accepted"], "listening point sent without style")
+got = [x for x in listing() if x["id"] == l1]
+check(got and got[0]["listening"]["heading_deg"] == 135 and got[0]["color"] == 0xFFFF9F1C,
+      "listening point served with heading and default colour")
+gj = c.get(f"{BASE}/api/v0.1/events/{event}/map-features.geojson").json()
+check(any(f["id"] == l1 and f["properties"].get("listening:heading_deg") == 135 for f in gj["features"]),
+      "listening point in the GeoJSON")
+check(sync(gone(l1, LT + timedelta(seconds=3), by="TERRAIN-02")) == ["rejected"], "another operator cannot cancel it")
+check(sync(gone(l1, LT + timedelta(seconds=6))) == ["accepted"], "its author cancels it within 10 s")
+check(sync(dict(op("create", listening(l2, LT)), object_id=l2)) == ["accepted"], "second listening point")
+check(sync(gone(l2, LT + timedelta(seconds=40))) == ["rejected"], "too late for its author to cancel it")
+check(sync(gone(l2, LT + timedelta(seconds=41), by="PCO")) == ["accepted"], "the PCO deletes it at any time")
+log = [x["summary"] for x in c.get(f"{BASE}/api/v0.1/events/{event}/logbook").json() if x["object_id"] in (l1, l2)]
+check("Signal de balise entendu ici par CAR-01, cap 135° (point d'écoute)" in log
+      and "Point d'écoute de CAR-01 annulé" in log, "listening points in the logbook")
+
 print("PASS: map feature synchronisation follows ADR-001")
