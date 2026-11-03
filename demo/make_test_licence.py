@@ -43,5 +43,13 @@ lic = {"id": "L-TEST-DEMO", "organisation": "ADRASEC Démo", "kind": "test", "mo
 doc = {"format": "sarcade-licence/1", "licence": lic, "signature": sign(key, lic),
        "key": {**cert, "signature": sign(root, cert)}}
 (out / "licence.json").write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
+# Licence of an organisation (lot 26): modules ADRASEC and Race, used by
+# demo/verify_directory.py for the organisation it creates.
+org = {"id": "L-TEST-ORG", "organisation": "Organisation de démonstration", "kind": "test",
+       "modules": ["adrasec", "race"], "issued_at": today.isoformat(),
+       "expires_at": (today + timedelta(days=90)).isoformat(), "price_eur": 0}
+org_doc = {"format": "sarcade-licence/1", "licence": org, "signature": sign(key, org),
+           "key": {**cert, "signature": sign(root, cert)}}
+(out / "licence-org.json").write_text(json.dumps(org_doc, ensure_ascii=False, indent=2), encoding="utf-8")
 (out / "root.pub").write_text(pub(root) + "\n", encoding="utf-8")
 print(pub(root))

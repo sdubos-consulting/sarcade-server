@@ -123,6 +123,9 @@ jobs:
       - name: Verify accounts (code by email, enrolled devices, revocation, lot 26)
         working-directory: demo
         run: docker compose -f docker-compose.demo.yml run --rm --entrypoint sh simulator -c "pip install -q httpx && python /demo/verify_accounts.py"
+      - name: Verify the directory (groups, habilitations, why this right, licence of an organisation, lot 26)
+        working-directory: demo
+        run: docker compose -f docker-compose.demo.yml run --rm --entrypoint sh simulator -c "pip install -q httpx && python /demo/verify_directory.py"
       - name: Verify HTTPS through the reverse proxy (option B, local CA)
         working-directory: demo
         run: |
