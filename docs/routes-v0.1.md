@@ -27,3 +27,19 @@ Chaque point étant un objet distinct, deux personnes qui modifient deux points 
 Le calcul des tronçons par les chemins (Valhalla) arrive avec la navigation niveau 2.
 
 Vérification : `tests/test_routes.py`, `demo/verify_routes.py` (CI).
+
+## Ordres de déplacement : heure d'arrivée estimée (lot 24, 3 novembre 2026)
+
+Rappel : un ordre de déplacement est l'objet synchronisé `move_order` (`target_id`, `status` = `sent` | `accepted` | `refused` | `arrived` | `cancelled`, `destination {lat, lon, label}`, `note`), donné par le PCO, auquel l'opérateur répond ; liste : `GET /api/v0.1/events/{id}/move-orders` ; temps réel `move_order.upserted` / `move_order.deleted`.
+
+Carte « Android Auto : heure d'arrivée estimée envoyée au PCO » :
+
+- `PUT /api/v0.1/events/{id}/move-orders/{order_id}/eta`, corps `{"device_id": "<terminal qui envoie>", "eta": "<ISO 8601>" | null, "remaining_m": <mètres, facultatif>}`.
+- Droits : l'opérateur visé (`target_id`), un autre terminal de la même personne (même indicatif sans SSID, comme les réponses, lot 20) ou le PCO ; sinon 403 `not_the_target`.
+- Seulement pour un ordre **accepté** : sinon 409 `order_not_accepted` (un `eta: null` sur un ordre non accepté répond 200 sans rien changer). 404 `move_order_not_found` (ordre inconnu ou supprimé), 422 `invalid_eta` (hors de [maintenant − 1 h, maintenant + 48 h]) ou `invalid_remaining_m` (0 à 2 000 km).
+- Effet : l'ordre porte `eta` (UTC, « Z »), `eta_updated_at` (heure du serveur à la réception), `eta_by` et, s'il est envoyé, `eta_remaining_m`. `eta: null` les retire. Le même `eta` renvoyé (toutes les 2 min) rafraîchit `eta_updated_at`.
+- L'estimation ne touche pas `updated_at` de l'ordre (les réponses de l'opérateur et l'annulation du PCO gardent leur règle du dernier écrivain) ; `revision` augmente ; réponse et diffusion `move_order.upserted` avec l'ordre complet ; le flux `…/sync/changes` porte l'ordre (`object_type: move_order`, `action: update`).
+- Une modification synchronisée de l'ordre garde l'estimation tant qu'il reste `accepted` ; `arrived`, `refused` ou `cancelled` l'effacent. Les champs `eta*` envoyés dans un `move_order` synchronisé sont ignorés : seule cette route les pose.
+- Pas de ligne de main courante par estimation (envoyée toutes les 2 min).
+
+Vérification : `tests/test_move_order_eta.py`, `demo/verify_move_orders.py` (CI).

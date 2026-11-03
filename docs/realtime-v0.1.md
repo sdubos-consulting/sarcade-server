@@ -30,3 +30,6 @@ Un client abonné à un événement reçoit immédiatement une nouvelle position
 - Suppression : synchronisation `action = delete`, charge `{updated_by}` ; une ligne en main courante (« Point d'intérêt « … » supprimé »). Le point disparaît de `GET …/pois`.
 - Droits : l'auteur ou le PCO (identifiant `PCO`/`PCO-…` ou rôle PCO de l'adresse vérifiée par Cloudflare Access) ; sinon `rejected` et entrée au journal de sécurité. Un point sans auteur (antérieur au 29 octobre) : PCO seulement.
 - Le flux de changements (`…/sync/changes`) porte l'état résultant ; une suppression porte `deleted: true`. Une suppression d'un point déjà supprimé répond `conflict`.
+
+## Ordres de déplacement (lot 24)
+`move_order.upserted` porte aussi l'heure d'arrivée estimée d'un ordre accepté (`eta`, `eta_updated_at`, `eta_by`, `eta_remaining_m`), voir `routes-v0.1.md`.

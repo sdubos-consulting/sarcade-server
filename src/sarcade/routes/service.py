@@ -15,6 +15,7 @@ with acknowledgement, concurrent order changes: last one wins, PCO warned.
 """
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 import math
 
 from sarcade.features.service import InvalidFeature, parse_time
@@ -249,6 +250,71 @@ def move_order_allowed(before: dict | None, created_by: str | None, change: dict
             and change.get("target_id") == before.get("target_id")
             and change.get("destination") == before.get("destination")
             and change.get("note", "") == before.get("note", ""))
+
+
+# Estimated arrival time of an accepted order (card « Android Auto : heure
+# d'arrivée estimée envoyée au PCO », lot 24, 3 Nov 2026): set by the
+# targeted operator (or another terminal of the same person, or the PCO)
+# while the order is accepted, cleared when it is arrived, refused or
+# cancelled. Fields of the order data: ``eta``, ``eta_updated_at``,
+# ``eta_by`` and, when sent, ``eta_remaining_m``.
+ETA_FIELDS = ("eta", "eta_updated_at", "eta_by", "eta_remaining_m")
+ETA_PAST = timedelta(hours=1)
+ETA_FUTURE = timedelta(hours=48)
+MAX_REMAINING_M = 2_000_000
+
+
+def clean_eta(value, now: datetime) -> datetime | None:
+    """Estimated arrival time, between 1 h ago and 48 h ahead; None clears."""
+    if value is None:
+        return None
+    try:
+        t = parse_time(value)
+    except InvalidFeature as exc:
+        raise InvalidFeature("invalid_eta") from exc
+    if not now - ETA_PAST <= t <= now + ETA_FUTURE:
+        raise InvalidFeature("invalid_eta")
+    return t.astimezone(UTC)
+
+
+def clean_remaining(value) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) \
+            or not 0 <= value <= MAX_REMAINING_M:
+        raise InvalidFeature("invalid_remaining_m")
+    return round(float(value), 1)
+
+
+def eta_allowed(order: dict, actor: str, pco: bool, same_person_as_target: bool = False) -> bool:
+    """The targeted operator (or another terminal of the same person) or the
+    PCO; only while the order is accepted."""
+    return order.get("status") == "accepted" and (
+        pco or actor == order.get("target_id") or same_person_as_target)
+
+
+def with_eta(data: dict, eta: datetime | None, actor: str, now: datetime, remaining_m: float | None = None) -> dict:
+    """Order data with its estimated arrival time set (or cleared)."""
+    out = {k: v for k, v in data.items() if k not in ETA_FIELDS}
+    if eta is not None:
+        out.update({"eta": _iso(eta), "eta_updated_at": _iso(now), "eta_by": actor})
+        if remaining_m is not None:
+            out["eta_remaining_m"] = remaining_m
+    return out
+
+
+def keep_eta(before: dict | None, data: dict) -> dict:
+    """A change of the order (answer, note of the PCO) keeps the estimate
+    while the order stays accepted; arrived, refused or cancelled clear it.
+    The estimate is never taken from the synchronised order itself."""
+    out = {k: v for k, v in data.items() if k not in ETA_FIELDS}
+    if before and data.get("status") == "accepted" and before.get("eta"):
+        out.update({k: before[k] for k in ETA_FIELDS if k in before})
+    return out
+
+
+def _iso(t: datetime) -> str:
+    return t.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 # Default name of a move order destination (card « Fond et affichage », 30 Oct 2026).

@@ -60,7 +60,18 @@ check(m and m[-1]["priority"] == "immediate" and "Point haut" in m[-1]["body"], 
 check(sync(order(o1, T0 + timedelta(seconds=1), by="TEL-03", status="accepted"), "update") == "rejected",
       "another operator cannot answer for TEL-02")
 check(sync(order(o1, T0 + timedelta(seconds=2), by="TEL-02", status="accepted"), "update") == "accepted", "TEL-02 accepts")
+# Estimated arrival time (lot 24): set by TEL-02 while the order is accepted.
+ETA = f"{E}/move-orders/{o1}/eta"
+eta = iso(T0 + timedelta(minutes=15))
+r = c.put(ETA, json={"device_id": "TEL-02", "eta": eta, "remaining_m": 6500})
+check(r.status_code == 200 and r.json()["eta"] and r.json()["eta_remaining_m"] == 6500, "TEL-02 sends its arrival time")
+check(c.put(ETA, json={"device_id": "TEL-03", "eta": eta}).status_code == 403, "another operator cannot send it")
+listed = {o["id"]: o for o in c.get(f"{E}/move-orders").json()}
+check(listed[o1]["eta"] == r.json()["eta"] and listed[o1]["eta_by"] == "TEL-02", "the order is listed with its estimate")
 check(sync(order(o1, T0 + timedelta(seconds=3), by="TEL-02", status="arrived"), "update") == "accepted", "TEL-02 arrives")
+listed = {o["id"]: o for o in c.get(f"{E}/move-orders").json()}
+check("eta" not in listed[o1], "the estimate is cleared at the arrival")
+check(c.put(ETA, json={"device_id": "TEL-02", "eta": eta}).status_code == 409, "no estimate once arrived")
 check(any("est arrivé" in x["body"] for x in messages("PCO")), "the PCO is told of the arrival")
 listed = {o["id"]: o for o in c.get(f"{E}/move-orders").json()}
 check(listed[o1]["status"] == "arrived", "the order is listed with its answer")

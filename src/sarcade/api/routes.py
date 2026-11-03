@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -123,6 +123,8 @@ def apply_route_object(db: Session, op, now: datetime, notices: Notices,
         row.deleted_at = change["updated_at"]
     else:
         row.data = {k: v for k, v in change.items() if k not in _META}
+        if kind == "move_order":
+            row.data = routes.keep_eta(before if not was_deleted else None, row.data)
         row.route_id = row.id if kind == "route" else change.get("route_id")
         row.deleted_at = None
     row.updated_at, row.updated_by = change["updated_at"], actor
@@ -338,6 +340,63 @@ def list_move_orders(event_id: str, db: Session = Depends(get_db)):
                                                    RouteObjectRow.kind == "move_order",
                                                    RouteObjectRow.deleted_at.is_(None))).all()
     return [object_dict(r) for r in rows]
+
+
+class EtaIn(BaseModel):
+    # Terminal that sends the estimate (the targeted operator, another
+    # terminal of the same person, or the PCO).
+    device_id: str = Field(min_length=1, max_length=64)
+    # Estimated arrival time (ISO 8601); null clears it.
+    eta: datetime | None = None
+    # Distance still to go, in metres (optional, shown to the PCO).
+    remaining_m: float | None = None
+
+
+@router.put("/events/{event_id}/move-orders/{order_id}/eta")
+async def put_move_order_eta(event_id: str, order_id: str, payload: EtaIn, request: Request,
+                             db: Session = Depends(get_db)):
+    """Estimated arrival time of an accepted move order (card « Android
+    Auto : heure d'arrivée estimée envoyée au PCO », lot 24). Only the
+    estimate changes: the order keeps its ``updated_at`` (its answers and
+    the cancellation of the PCO still win), ``revision`` goes up, the
+    change feed and ``move_order.upserted`` carry the order."""
+    from sarcade import roles as user_roles
+    from sarcade.realtime.manager import manager
+
+    from .roles import checked_email
+
+    row = db.get(RouteObjectRow, order_id)
+    if row is None or row.event_id != event_id or row.kind != "move_order" or row.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="move_order_not_found")
+    now = datetime.now(UTC)
+    try:
+        eta = routes.clean_eta(payload.eta, now)
+        remaining = routes.clean_remaining(payload.remaining_m)
+    except features.InvalidFeature as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    email = checked_email(request)
+    pco = groups.is_pco(payload.device_id) or (email is not None and "pco" in user_roles.roles_of(db, email))
+    data = dict(row.data or {})
+    if data.get("status") != "accepted":
+        if eta is None:
+            return object_dict(row)          # nothing to clear
+        raise HTTPException(status_code=409, detail="order_not_accepted")
+    if not routes.eta_allowed(data, payload.device_id, pco,
+                              _same_person(db, event_id, payload.device_id, data.get("target_id"))):
+        raise HTTPException(status_code=403, detail="not_the_target")
+    if eta is None and not data.get("eta"):
+        return object_dict(row)              # nothing to clear
+    # Sent again unchanged (every 2 min): ``eta_updated_at`` tells the PCO
+    # the estimate is still fresh.
+    row.data = routes.with_eta(data, eta, payload.device_id, now, remaining)
+    row.revision = (row.revision or 0) + 1
+    db.flush()
+    result = object_dict(row)
+    record_operation(db, event_id=event_id, operation_id=f"eta-{uuid.uuid4()}", object_id=row.id,
+                     object_type="move_order", action="update", payload=result, client_time=now)
+    db.commit()
+    await manager.broadcast(event_id, {"type": "move_order.upserted", "data": result})
+    return result
 
 
 @router.get("/events/{event_id}/routes/{route_id}.gpx")
