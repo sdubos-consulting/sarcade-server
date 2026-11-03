@@ -80,6 +80,15 @@ check(c.get(f"{API}/clients/latest").json()["windows"]["version"] == "0.2.0", "l
 check(c.get(f"{API}/clients/windows/package").content == b"MSIX-demo-package", "client package served on the network")
 r = c.post(f"{API}/clients/check", json={"device_id": device, "platform": "windows", "app_version": "0.2.0"}).json()
 check(r["status"] == "ok", "updated client accepted")
+# Windows installer taken from the windows-dev pre-release (stand-in), lot 25.
+check(c.post(f"{API}/admin/clients/windows/fetch").status_code == 401, "GitHub fetch needs the admin token")
+fetched = c.post(f"{API}/admin/clients/windows/fetch", headers=ADMIN)
+check(fetched.status_code == 200 and fetched.json()["version"] == "0.1.0+960" and fetched.json()["changed"],
+      "Windows installer taken from windows-dev, size and SHA-256 checked")
+check(c.get(f"{API}/clients/windows/package").content == b"MZ-SARCADE-demo-installer",
+      "installer from GitHub served on the network")
+check(c.post(f"{API}/admin/clients/windows/fetch", headers=ADMIN).json()["changed"] is False,
+      "same installer not downloaded twice")
 c.patch(f"{API}/admin/settings", headers=ADMIN, json={"settings": {"clients": {"min_version": None}}})
 c.patch(f"{API}/admin/settings", headers=ADMIN,
         json={"settings": {"clients": {"releases": {"android": {"version": "0.9.0", "build": 900}}}}})
