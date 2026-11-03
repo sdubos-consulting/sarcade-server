@@ -62,7 +62,7 @@ check(c.get(f"{E}/operator-statuses").json()[0]["operator_status"] == "sur_place
 feed = [x for x in c.get(f"{E}/sync/changes").json()["changes"] if x["object_type"] == "operator_status"]
 check(len(feed) == 1 and feed[0]["payload"]["operator_status"] == "sur_place", "change feed: resulting state")
 
-r = c.put(f"{E}/devices/CAR-1/status", json={"status": None})
+r = c.put(f"{E}/devices/CAR-1/status", json={"status": None, "at": iso(T0 + timedelta(minutes=1))})
 check(r.json()["operator_status"] is None, "status removed")
 check(c.get(f"{E}/operator-statuses").json() == [], "no status left")
 
