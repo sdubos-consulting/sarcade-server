@@ -215,6 +215,7 @@ def tls_expiry(host: str, port: int = 443, timeout: float = 8) -> datetime:
     without checking it (local certification authority, option B)."""
     from cryptography import x509
     context = ssl.create_default_context()
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
     with socket.create_connection((host, port), timeout=timeout) as raw:
