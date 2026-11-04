@@ -1,5 +1,6 @@
 """Integration check of the server block of « Paramètres › Diagnostic »
-(lot 5): state, components, resources read from /proc in the container.
+(lot 5): state, components, resources read from /proc in the container;
+levels, Brevo and /version (lot 28).
 
 Usage: SARCADE_URL=http://localhost:8000 python demo/verify_diagnostics.py
 """
@@ -33,4 +34,16 @@ check(res["disk"] and res["disk"]["total_gb"] > 0, "disk seen from the container
 check(res["cpu_pct"] is None or 0 <= res["cpu_pct"] <= 100, "processor from /proc/stat")
 cl = c.get(f"{API}/diagnostics/client").json()
 check(cl["ip"] and cl["via_cloudflare"] is False, f"client address seen by the server: {cl['ip']}")
+
+# Lot 28: levels computed by the server, Brevo, /version.
+check(d["level"] == "transition", "device without account during the transition: view of before")
+adm = c.get(f"{API}/diagnostics/server", headers={"Authorization": "Bearer demo-admin-token"}).json()
+check(adm["level"] == "admin" and "resources" in adm, "administrator: everything")
+check(adm["mail"]["delivery"] == "simulated" and adm["mail"]["probe"] is None, "Brevo: simulated sending, no test")
+check(adm["build"]["reference"] and isinstance(adm["addresses"], list), "versions and addresses for the administrator")
+r = c.post(f"{API}/admin/mail/test", headers={"Authorization": "Bearer demo-admin-token"})
+check(r.status_code == 422, "test email needs the address of an administrator")
+v = c.get(f"{BASE}/version")
+check(v.status_code == 200 and v.json()["service"] == "sarcade-server", f"/version: {v.json().get('reference')}")
+check(v.headers.get("cache-control") == "no-store", "/version never kept in a cache")
 print("diagnostics: all checks passed")

@@ -38,6 +38,10 @@ COPY alembic.ini .
 RUN pip install --no-cache-dir --no-deps -e .
 ARG SARCADE_VERSION=""
 ENV SARCADE_VERSION=${SARCADE_VERSION}
+# Commit and label of the reference version, read by /version (lot 28).
+ARG SARCADE_COMMIT=""
+ARG SARCADE_TAG=""
+ENV SARCADE_COMMIT=${SARCADE_COMMIT} SARCADE_TAG=${SARCADE_TAG}
 
 # Web client, downloaded by the "web" stage above. SARCADE_WEB_CACHEBUST:
 # manual forcing of this step (any new value), normally useless.
