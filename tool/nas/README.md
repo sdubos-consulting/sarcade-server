@@ -1,16 +1,19 @@
-# Outils du NAS de test
+# Outils du NAS
+
+Deux serveurs sur le NAS (lot 28, `docs/nas-test-server-v0.1.md`) : **exploitation** (`/volume1/docker/sarcade`, `app.sarcade.org`, port 8000), sur une version de référence mise à la main ; **test** (`/volume1/docker/sarcade-test`, `test.sarcade.org`, port 8010), qui suit `main` tout seul. Les outils visent l'exploitation par défaut, le test avec `SARCADE_ROOT=/volume1/docker/sarcade-test` (sauf `sarcade-autoupdate`, qui ne vise que le test).
 
 ## sarcade-switch
-Bascule le serveur du NAS sur une branche en une commande : sauvegarde de la base si la branche ajoute des migrations, refus de revenir sur une branche plus ancienne que la base, reconstruction (avec le dernier client web), attente de `/health`.
+Bascule un serveur du NAS sur une étiquette ou une branche en une commande : sauvegarde de la base si la cible ajoute des migrations, refus de revenir sur une version plus ancienne que la base, reconstruction (avec le dernier client web), attente de `/health`.
 
-Utilisation : `sarcade-switch main`, `sarcade-switch feat/aprs`, `sarcade-switch --status`, `sarcade-switch --list`.
+Utilisation : `sarcade-switch v0.1.0-exercice1` (exploitation, version de référence), `SARCADE_ROOT=/volume1/docker/sarcade-test sarcade-switch feat/aprs` (recette d'une PR sur le test), `sarcade-switch --status`, `sarcade-switch --list`. Une branche est refusée sur l'exploitation, sauf dépannage avec `--branche`.
 
 ## Client web à jour
 L'image du serveur vérifie elle-même, à chaque construction, la dernière publication du client web (`web-dev` de `sarcade-app`) : une reconstruction normale prend le nouveau client s'il y en a un, et garde le cache sinon. Plus besoin de `SARCADE_WEB_CACHEBUST` (gardé seulement pour forcer à la main).
 
-Mise à jour manuelle sur le NAS (en root), serveur et client web :
+Mise à jour manuelle sur le NAS (en root), serveur et client web : serveur de test, puis exploitation sur la version de référence :
 ```
-sarcade-switch main
+SARCADE_ROOT=/volume1/docker/sarcade-test sarcade-switch main
+sarcade-switch v0.1.0-exercice1
 ```
 Client web seul, sans toucher au code du serveur :
 ```
@@ -28,16 +31,17 @@ curl -fsS -o /tmp/sarcade-sbom.json http://localhost:8000/sarcade-sbom.cdx.json 
 Résultat attendu : `"bomFormat": "CycloneDX"` puis le nombre de composants (de l'ordre de quelques centaines). `curl: (22) … 404` : SBOM non produit, voir le journal de construction.
 
 ## sarcade-autoupdate
-Met le NAS à jour tout seul depuis GitHub, toutes les 5 minutes (Planificateur de tâches de DSM) :
-- **nouveau commit sur `main`** dont la CI est au vert → `sarcade-switch main` (sauvegarde, migrations, reconstruction) ;
-- **nouveau client web** publié (`web-dev`) → reconstruction du serveur seul ;
-- **NAS basculé à la main** sur une autre branche (recette d'une PR) → rien, jusqu'au retour sur `main` (`sarcade-switch main`) ;
-- **CI en échec** → rien, le NAS reste sur la dernière version verte ;
-- **échec d'une mise à jour** → pause automatique (fichier `autoupdate.off`) et message dans le journal.
+Met le **serveur de test** à jour tout seul depuis GitHub, toutes les 5 minutes (Planificateur de tâches de DSM). L'exploitation n'est plus jamais mise à jour automatiquement : `sarcade-switch <étiquette>` à la main.
+- **nouveau commit sur `main`** dont la CI est au vert → `SARCADE_ROOT=/volume1/docker/sarcade-test sarcade-switch main` (sauvegarde, migrations, reconstruction), puis réinstallation des outils `tool/nas/sarcade-*.sh` ;
+- **nouveau client web** publié (`web-dev`) → reconstruction du serveur de test seul ;
+- **test basculé à la main** sur une autre branche (recette d'une PR) → rien, jusqu'au retour sur `main` ;
+- **CI en échec** → rien, le test reste sur la dernière version verte ;
+- **échec d'une mise à jour** → pause automatique (fichier `autoupdate.off`) et message dans le journal ;
+- **serveur de test pas installé** → rien (une ligne par jour dans `/volume1/docker/sarcade/autoupdate.log`).
 
 Commandes : `sarcade-autoupdate --status` (état et derniers passages), `sarcade-autoupdate --dry-run` (dit ce qu'il ferait).
-Pause : `touch /volume1/docker/sarcade/autoupdate.off` ; reprise : `rm /volume1/docker/sarcade/autoupdate.off`.
-Journal : `/volume1/docker/sarcade/autoupdate.log`.
+Pause : `touch /volume1/docker/sarcade-test/autoupdate.off` ; reprise : `rm /volume1/docker/sarcade-test/autoupdate.off`.
+Journal : `/volume1/docker/sarcade-test/autoupdate.log`.
 
 Les outils se réinstallent eux-mêmes depuis le dépôt après chaque mise à jour du serveur.
 
