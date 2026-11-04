@@ -183,5 +183,6 @@ def record(db, ok: bool, now, failure: str | None = None) -> None:
         else:
             v.update(last_failure_at=at, last_failure=(failure or "")[:200])
         set_value(db, STATS_KEY, v, now)
+        db.flush()
     except Exception:  # noqa: BLE001 - never blocks a sending
         log.debug("mail stats not written", exc_info=True)

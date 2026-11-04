@@ -86,6 +86,13 @@ def me(request: Request, db: Session = Depends(get_db)):
     if caller.auth_device_id:
         out["device"] = accounts.device_dict(db.get(AuthDeviceRow, caller.auth_device_id))
     out.update(rights_view(db, user.id if user is not None else None, email))
+    if "admin" in out["roles"]:
+        # Red dot on Paramètres for the administrators (lot 28, Échéances).
+        try:
+            from sarcade import deadlines
+            out["deadlines"] = deadlines.view(db)["summary"]
+        except Exception:  # noqa: BLE001 - never blocks « who am I »
+            pass
     return out
 
 

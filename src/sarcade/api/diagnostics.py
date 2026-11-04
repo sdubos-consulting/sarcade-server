@@ -22,10 +22,11 @@ import time
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
-from sarcade import diagnostics as diag, roles, version as server_version
+from sarcade import deadlines, diagnostics as diag, roles, version as server_version
 from sarcade.access.verify import verifier
 from sarcade.accounts import mailer
 from sarcade.accounts.caller import caller_of
@@ -221,8 +222,39 @@ async def server_diagnostics(request: Request, db: Session = Depends(get_db)):
            "last_update": _last_update(db), "last_backup": _last_backup(db),
            "update_status": updates.get_value(db, "update_status")}
     if level == "admin":
-        out.update(build=info, addresses=addresses(), mail=await mail_block(db))
+        out.update(build=info, addresses=addresses(), mail=await mail_block(db), deadlines=deadlines.view(db, now))
     return out
+
+
+# --- Échéances (lot 28) -----------------------------------------------------------------
+
+def _deadline_reader(request: Request, db: Session = Depends(get_db)) -> str:
+    from .admin import require_journal_reader
+    return require_journal_reader(request, db)
+
+
+@router.get("/admin/deadlines")
+def get_deadlines(db: Session = Depends(get_db), _reader: str = Depends(_deadline_reader)):
+    """Everything that expires, with the manual items as the administrator typed them."""
+    return {**deadlines.view(db), "manual": deadlines.manual(db)}
+
+
+class DeadlinesIn(BaseModel):
+    items: list[dict]
+
+
+@router.put("/admin/deadlines")
+def put_deadlines(body: DeadlinesIn, request: Request, db: Session = Depends(get_db),
+                  admin: str = Depends(require_server_admin)):
+    from sarcade.security import journal
+    try:
+        clean = deadlines.save(db, body.items, admin)
+    except deadlines.InvalidDeadlines as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    journal.record(db, "admin", "deadlines_changed", "success", actor=admin, source_ip=client_ip(request),
+                   details={"items": len(clean)})
+    db.commit()
+    return {**deadlines.view(db), "manual": deadlines.manual(db)}
 
 
 @router.post("/admin/mail/test")
