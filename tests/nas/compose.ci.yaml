@@ -1,0 +1,37 @@
+# Instance SARCADE réduite (base + serveur) pour l'essai de bout en bout de
+# sarcade-backup / sarcade-restore en CI (tests/nas/e2e_backup_restore.sh).
+# Copiée dans un dossier « exploitation » et un dossier « test », comme sur
+# le NAS : deux projets Compose, mêmes noms de services.
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: sarcade
+      POSTGRES_USER: sarcade
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sarcade -d sarcade"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  server:
+    image: sarcade-server:ci
+    environment:
+      DATABASE_URL: postgresql+psycopg://sarcade:${POSTGRES_PASSWORD}@postgres:5432/sarcade
+      SARCADE_FILE_ROOT: /var/lib/sarcade/files
+      SARCADE_UPDATE_CHECK: "0"
+      SARCADE_GEOCODER_URL: ""
+    ports:
+      - "${PORT}:8000"
+    volumes:
+      - files:/var/lib/sarcade/files
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  db:
+  files:

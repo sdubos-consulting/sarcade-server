@@ -1,0 +1,12 @@
+# Complément Compose de l'exploitation du NAS (/volume1/docker/sarcade) :
+# l'état des sauvegardes (backups/last.json, écrit par sarcade-backup, et
+# backups/last-restore.json, écrit par sarcade-restore) est visible du
+# serveur en lecture seule, pour le Diagnostic administrateur.
+# Ajouté à la liste COMPOSE_FILE du .env du NAS par le bloc d'installation
+# (docs/nas-backup-v0.1.md) : ni compose.yaml ni l'override ne sont modifiés.
+services:
+  server:
+    environment:
+      SARCADE_BACKUP_STATE: /var/lib/sarcade/backup-state/last.json
+    volumes:
+      - ./backups:/var/lib/sarcade/backup-state:ro

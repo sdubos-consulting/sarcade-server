@@ -50,3 +50,8 @@ Puis dans DSM : **Panneau de configuration → Planificateur de tâches → Cré
 - Général : nom `SARCADE mise à jour automatique`, utilisateur **root** ;
 - Programmer : **tous les jours**, fréquence **toutes les 5 minutes**, de 00:00 à 23:55 ;
 - Paramètres de tâche : `/usr/local/bin/sarcade-autoupdate`.
+
+## sarcade-backup et sarcade-restore
+Sauvegarde chiffrée de l'exploitation chaque nuit (base et fichiers envoyés, 14 jours, dossier partagé `sarcade-sauvegardes` copié par Hyper Backup, e-mail DSM si une sauvegarde manque) et restauration sur le serveur de test. Détail, format de l'état `backups/last.json` lu par le Diagnostic et blocs d'installation : `docs/nas-backup-v0.1.md`.
+
+Commandes : `sarcade-backup --status`, `sarcade-backup --check`, `sarcade-restore --list`, `sarcade-restore` (dernière sauvegarde vers le serveur de test, mot de passe de la clé demandé).
