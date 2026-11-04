@@ -71,10 +71,12 @@ def request_code(body: CodeRequest, request: Request, db: Session = Depends(get_
             issued.row.used_at = now
             journal.record(db, "auth", "login_code_sent", "failure", actor=email, source_ip=ip,
                            details={"email": email, "reason": str(exc)})
+            mailer.record(db, False, now, str(exc))
             db.commit()
             raise HTTPException(status_code=503, detail="mail_failed")
         journal.record(db, "auth", "login_code_sent", "success", actor=email, source_ip=ip,
                        details={"email": email})
+        mailer.record(db, True, now)
     db.commit()
     return {"status": "sent", "delivery": "simulated" if cfg is None else "smtp",
             "expires_in_s": int(accounts.CODE_TTL.total_seconds()),
