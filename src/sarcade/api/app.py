@@ -67,7 +67,7 @@ from sarcade.events import contacts as event_contacts
 from sarcade.events import operator_status
 from . import diagnostics as diagnostics_api
 from . import sbom as sbom_api
-from sarcade import diagnostics
+from sarcade import deadlines, diagnostics
 
 log = logging.getLogger("sarcade.sync")
 
@@ -85,6 +85,7 @@ async def lifespan(_app):
     licensing.start(_background_tasks)
     siem.start(_background_tasks)
     event_contacts.start(_background_tasks)
+    deadlines.start(_background_tasks)
     yield
     for task in _background_tasks:
         task.cancel()
@@ -103,7 +104,7 @@ async def no_store_for_api(request, call_next):
     stopped seeing new messages (25 October 2026)."""
     diagnostics.seen_cloudflare(request.headers)
     response = await call_next(request)
-    if request.url.path.startswith("/api/") or request.url.path == "/health":
+    if request.url.path.startswith("/api/") or request.url.path in ("/health", "/version"):
         response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -146,6 +147,14 @@ for _router in module_hooks.routers:
     app.include_router(_router)
 app.include_router(diagnostics_api.router)
 app.include_router(sbom_api.router)
+
+
+@app.get("/version")
+def version_info():
+    """Version, commit, reference, digests of the web client and of the SBOM
+    (lot 28); also at /api/v0.1/version."""
+    from sarcade import version as server_version
+    return server_version.info()
 
 
 @app.get("/health")

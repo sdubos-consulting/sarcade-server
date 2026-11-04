@@ -79,12 +79,10 @@ def test_route(client):
     assert body["resources"]["cpu_pct"] == 12.0 and body["alert_pct"] == 80.0
 
 
-def test_route_refused_without_pco(client, monkeypatch):
-    def refuse():
-        from fastapi import HTTPException
-        raise HTTPException(status_code=403, detail="pco_required")
-    app.dependency_overrides[roles_api.require_pco] = refuse
-    assert client.get("/api/v0.1/diagnostics/server").status_code == 403
+def test_route_without_account_keeps_the_view_of_before(client):
+    # No directory (transition): the device without account sees what it saw.
+    body = client.get("/api/v0.1/diagnostics/server").json()
+    assert body["level"] == "transition" and "resources" in body and "mail" not in body
 
 
 def test_client_route(client):
