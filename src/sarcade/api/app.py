@@ -67,7 +67,7 @@ from sarcade.events import contacts as event_contacts
 from sarcade.events import operator_status
 from . import diagnostics as diagnostics_api
 from . import sbom as sbom_api
-from sarcade import diagnostics
+from sarcade import deadlines, diagnostics
 
 log = logging.getLogger("sarcade.sync")
 
@@ -85,6 +85,7 @@ async def lifespan(_app):
     licensing.start(_background_tasks)
     siem.start(_background_tasks)
     event_contacts.start(_background_tasks)
+    deadlines.start(_background_tasks)
     yield
     for task in _background_tasks:
         task.cancel()
