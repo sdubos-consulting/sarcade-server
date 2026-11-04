@@ -1,16 +1,22 @@
 #!/usr/bin/env bash
-# sarcade-autoupdate : met à jour le serveur de test du NAS tout seul, depuis GitHub.
+# sarcade-autoupdate : met à jour le SERVEUR DE TEST du NAS tout seul, depuis GitHub.
 #
 # Lancé toutes les 5 minutes par le Planificateur de tâches de DSM (en root).
+# Le serveur de test (/volume1/docker/sarcade-test, test.sarcade.org) suit
+# main ; le serveur d'exploitation (/volume1/docker/sarcade, app.sarcade.org)
+# ne suit plus main : il est mis à jour à la main sur une version de
+# référence, par sarcade-switch <étiquette>.
 # À chaque passage :
 #   1. ne fait rien si le fichier $ROOT/autoupdate.off existe (pause manuelle) ;
-#   2. ne fait rien si le NAS a été basculé à la main sur une autre branche
-#      (recette d'une PR avec sarcade-switch feat/...) : la mise à jour
-#      automatique ne suit que $BRANCH (main par défaut) ;
-#   3. nouveau commit serveur sur $BRANCH, avec la CI GitHub au vert :
+#   2. ne fait rien si le serveur de test n'est pas installé, ou si $ROOT est
+#      le serveur d'exploitation (sauf SARCADE_AUTO_PRODUCTION=1, ancien mode) ;
+#   3. ne fait rien si le serveur de test a été basculé à la main sur une
+#      autre branche (recette d'une PR) : seule $BRANCH (main) est suivie ;
+#   4. nouveau commit serveur sur $BRANCH, avec la CI GitHub au vert :
 #      sarcade-switch $BRANCH (sauvegarde de la base si nouvelles migrations,
-#      refus d'une base plus récente, reconstruction, attente de /health) ;
-#   4. sinon, nouveau client web publié (pré-version web-dev) : reconstruction
+#      refus d'une base plus récente, reconstruction, attente de /health),
+#      puis réinstallation des outils tool/nas/sarcade-*.sh ;
+#   5. sinon, nouveau client web publié (pré-version web-dev) : reconstruction
 #      du serveur seul pour l'embarquer.
 # Journal : $ROOT/autoupdate.log (500 dernières lignes).
 #
@@ -19,16 +25,47 @@
 #   sarcade-autoupdate --dry-run  dit ce qu'il ferait, sans rien changer
 set -uo pipefail
 
-ROOT=${SARCADE_ROOT:-/volume1/docker/sarcade}
+PROD_ROOT=${SARCADE_PROD_ROOT:-/volume1/docker/sarcade}
+ROOT=${SARCADE_ROOT:-${SARCADE_TEST_ROOT:-/volume1/docker/sarcade-test}}
+# Réglages propres à l'instance (SARCADE_INSTANCE, SARCADE_HEALTH…), sans secret.
+# shellcheck disable=SC1091
+[ -f "$ROOT/instance.env" ] && . "$ROOT/instance.env"
 REPO=${SARCADE_REPO:-$ROOT/sarcade-server}
 BRANCH=${SARCADE_AUTO_BRANCH:-main}
 SERVER_REPO=${SARCADE_SERVER_REPO:-sdubos-consulting/sarcade-server}
 APP_REPO=${SARCADE_APP_REPO:-sdubos-consulting/sarcade-app}
 SWITCH=${SARCADE_SWITCH:-/usr/local/bin/sarcade-switch}
-HEALTH=${SARCADE_HEALTH:-http://localhost:8000/health}
+BIN=${SARCADE_BIN:-/usr/local/bin}
+HEALTH=${SARCADE_HEALTH:-http://localhost:8010/health}
 STATE=$ROOT/.autoupdate
 LOG=$ROOT/autoupdate.log
-API=https://api.github.com
+API=${SARCADE_GITHUB_API:-https://api.github.com}
+
+# Une ligne par jour dans le journal de l'exploitation, sans rien créer
+# dans un serveur de test absent.
+note_daily() {  # note_daily <clé> <message>
+  local dir=$PROD_ROOT/.autoupdate stamp
+  mkdir -p "$dir" 2>/dev/null || return 0
+  stamp="$dir/$1-$(date +%F)"
+  [ -f "$stamp" ] && return 0
+  touch "$stamp"
+  printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$2" | tee -a "$PROD_ROOT/autoupdate.log"
+}
+same_dir() { [ "$(cd "$1" 2>/dev/null && pwd -P)" = "$(cd "$2" 2>/dev/null && pwd -P)" ]; }
+
+if [ "${1:-}" != --status ] && [ "${1:-}" != --dry-run ] && [ -n "${1:-}" ]; then
+  sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 0
+fi
+
+if same_dir "$ROOT" "$PROD_ROOT" && [ "${SARCADE_AUTO_PRODUCTION:-0}" != 1 ]; then
+  note_daily production "rien : $ROOT est le serveur d'exploitation, mis à jour à la main (sarcade-switch <étiquette>) ; la mise à jour automatique suit le serveur de test"
+  exit 0
+fi
+if [ ! -d "$REPO/.git" ]; then
+  note_daily no-test "rien : serveur de test non installé ($REPO absent) ; l'exploitation reste sur sa version (sarcade-switch <étiquette>)"
+  [ "${1:-}" = --status ] && echo "Serveur de test non installé : $REPO absent"
+  exit 0
+fi
 
 mkdir -p "$STATE"
 git_() { git -C "$REPO" -c safe.directory='*' "$@"; }
@@ -39,6 +76,7 @@ json() { python3 -c "import sys,json;d=json.load(sys.stdin);print($1)" 2>/dev/nu
 
 case "${1:-}" in
   --status)
+    echo "Instance       : ${SARCADE_INSTANCE:-test} ($ROOT)"
     echo "Branche suivie : $BRANCH"
     echo "Pause          : $([ -f "$ROOT/autoupdate.off" ] && echo oui || echo non)"
     echo "Code du NAS    : $(git_ branch --show-current) $(git_ log --oneline -1)"
@@ -46,11 +84,10 @@ case "${1:-}" in
     echo "Derniers passages :"; tail -n 8 "$LOG" 2>/dev/null
     exit 0 ;;
   --dry-run) DRY=1 ;;
-  "") DRY=0 ;;
-  *) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  *) DRY=0 ;;
 esac
 
-[ "$(id -u)" = 0 ] || { echo "lancer en root" >&2; exit 1; }
+[ "$(id -u)" = 0 ] || [ "${SARCADE_ALLOW_NONROOT:-0}" = 1 ] || { echo "lancer en root" >&2; exit 1; }
 [ -f "$ROOT/autoupdate.off" ] && exit 0
 
 # Un seul passage à la fois (une reconstruction peut dépasser 5 minutes).
@@ -65,7 +102,7 @@ current=$(git_ branch --show-current)
 if [ "$current" != "$BRANCH" ]; then
   # Recette manuelle en cours : on ne touche à rien, une seule ligne par jour.
   stamp="$STATE/manual-$(date +%F)"
-  [ -f "$stamp" ] || { log "pause : NAS basculé à la main sur $current (suivi automatique de $BRANCH seulement)"; touch "$stamp"; }
+  [ -f "$stamp" ] || { log "pause : serveur $ROOT basculé à la main sur $current (suivi automatique de $BRANCH seulement)"; touch "$stamp"; }
   exit 0
 fi
 
@@ -91,11 +128,13 @@ if [ "$local_sha" != "$remote_sha" ]; then
   esac
   log "mise à jour serveur : ${local_sha:0:7} -> ${remote_sha:0:7} ($(git_ log --format=%s -1 "$remote_sha"))"
   [ "$DRY" = 1 ] && { log "(essai : rien n'est fait)"; exit 0; }
-  if "$SWITCH" "$BRANCH" >> "$LOG" 2>&1; then
+  extra=()
+  same_dir "$ROOT" "$PROD_ROOT" && extra=(--branche)
+  if SARCADE_ROOT="$ROOT" "$SWITCH" "$BRANCH" "${extra[@]}" >> "$LOG" 2>&1; then
     [ -n "$web_now" ] && echo "$web_now" > "$STATE/web"
-    # Les outils du NAS suivent le dépôt (version du commit installé).
-    for t in sarcade-switch sarcade-autoupdate; do
-      [ -f "$REPO/tool/nas/$t.sh" ] && install -m 755 "$REPO/tool/nas/$t.sh" "/usr/local/bin/$t"
+    # Les outils du NAS suivent main (version du commit installé sur le test).
+    for f in "$REPO"/tool/nas/sarcade-*.sh; do
+      [ -f "$f" ] && install -m 755 "$f" "$BIN/$(basename "$f" .sh)"
     done
     log "terminé : serveur ${remote_sha:0:7}, client web $web_now"
   else

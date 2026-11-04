@@ -35,7 +35,7 @@ Décision du porteur, 28 octobre 2026, 23 h 10.
 ## Pièges connus
 - **Migrations Alembic** dans `migrations/versions/`, numérotées `00NN_*.py` en chaîne stricte. Avant de créer une migration, vérifier le dernier numéro sur `main` (deux branches ont déjà créé la même 0015).
 - **Dépendances** : `uv.lock` est figé (l'image Docker installe avec hachages). Toute dépendance ajoutée dans `pyproject.toml` impose `uv lock` (un oubli a cassé l'image le 28 octobre 2026).
-- Le serveur du NAS suit `main` automatiquement quand la CI est verte (`sarcade-autoupdate`) : une fusion = un déploiement.
+- Deux serveurs sur le NAS (lot 28, `docs/nas-test-server-v0.1.md`) : le **serveur de test** (`test.sarcade.org`) suit `main` automatiquement quand la CI est verte (`sarcade-autoupdate`) : une fusion = un déploiement sur le test ; l'**exploitation** (`app.sarcade.org`) reste sur une version de référence (étiquette), mise à jour à la main par `sarcade-switch <étiquette>`.
 - Le compose du NAS est personnalisé : toute nouvelle variable d'environnement doit être ajoutée par le porteur dans `docker-compose.override.yml` du NAS (`/volume1/docker/sarcade`).
 - Secrets serveur : `.env` du NAS ; fichiers (ex. compte de service Firebase) dans `/volume1/docker/sarcade/secrets/`, montés en lecture seule.
 
