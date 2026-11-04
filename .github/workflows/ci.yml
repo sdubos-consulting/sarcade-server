@@ -33,6 +33,21 @@ jobs:
           uv export --frozen --no-dev --no-emit-project --format requirements-txt -o requirements.txt
           pip-audit --require-hashes -r requirements.txt
 
+  nas-backup-restore:
+    # Sauvegarde chiffrée de l'exploitation puis restauration sur un serveur
+    # de test neuf (tool/nas/sarcade-backup, sarcade-restore), vrais conteneurs.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Server image (without web client nor SBOM)
+        run: docker build --build-arg SARCADE_WEB=none --build-arg SARCADE_SBOM=none -t sarcade-server:ci .
+      - name: Backup then restore on an empty test server
+        run: bash tests/nas/e2e_backup_restore.sh "$RUNNER_TEMP/nas"
+      - name: Logs on failure
+        if: failure()
+        run: |
+          for d in sarcade sarcade-test; do (cd "$RUNNER_TEMP/nas/$d" && docker compose logs --tail 60) || true; done
+
   demo-integration:
     runs-on: ubuntu-latest
     steps:
