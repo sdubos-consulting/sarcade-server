@@ -10,11 +10,11 @@ when the connection comes back, without loss (cursor in server_settings).
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime, timedelta
 import logging
 import os
 from pathlib import Path
 import ssl
+from datetime import UTC, datetime, timedelta  # noqa: I001 (lot 29: kept apart from the format PR)
 
 from sqlalchemy import select
 
