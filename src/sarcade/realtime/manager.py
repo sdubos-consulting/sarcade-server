@@ -15,9 +15,11 @@ class ConnectionManager:
         if not self._connections[event_id]:
             self._connections.pop(event_id, None)
 
-    async def broadcast(self, event_id: str, payload: dict):
+    async def broadcast(self, event_id: str, payload: dict, exclude: WebSocket | None = None):
         dead = []
         for ws in list(self._connections.get(event_id, ())):
+            if ws is exclude:
+                continue
             try:
                 await ws.send_json(payload)
             except Exception:

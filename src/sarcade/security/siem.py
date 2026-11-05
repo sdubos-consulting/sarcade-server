@@ -10,10 +10,12 @@ when the connection comes back, without loss (cursor in server_settings).
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 from pathlib import Path
 import ssl
+from datetime import UTC, datetime, timedelta  # noqa: I001 (lot 29: kept apart from the format PR)
 
 from sqlalchemy import select
 
@@ -22,11 +24,11 @@ from sarcade.db.models import SecurityEventRow
 from sarcade.db.session import SessionLocal
 from sarcade.updates.service import get_value, set_value
 
-from . import journal
+from . import event_format, journal
 
 log = logging.getLogger("sarcade.siem")
 CURSOR_KEY = "siem_cursor"
-state = {"enabled": False, "connected": False, "last_error": None, "sent": 0}
+state = {"enabled": False, "connected": False, "last_error": None, "last_error_at": None, "sent": 0}
 
 
 def config() -> dict:
@@ -41,6 +43,10 @@ def frame(line: str) -> bytes:
 
 
 def render(row: SecurityEventRow, fmt: str) -> str:
+    """« syslog » (RFC 5424, default), « json » (journal fields) or « ecs »
+    (common event format, lot 29, group 8)."""
+    if fmt == "ecs":
+        return json.dumps(event_format.from_security(row), sort_keys=True, ensure_ascii=False)
     return journal.to_json_line(row) if fmt == "json" else journal.to_syslog(row)
 
 
@@ -112,6 +118,7 @@ async def forward_loop() -> None:
                 continue
         except (OSError, ssl.SSLError) as exc:
             state["connected"], state["last_error"] = False, type(exc).__name__
+            state["last_error_at"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
             log.warning("SIEM unreachable (%s), entries kept locally", exc)
             if writer is not None:
                 writer.close()
@@ -120,8 +127,49 @@ async def forward_loop() -> None:
             continue
         except Exception as exc:  # noqa: BLE001
             state["last_error"] = type(exc).__name__
+            state["last_error_at"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
             log.warning("SIEM forwarding error: %s", exc)
         await asyncio.sleep(5)
+
+
+#: Entries waiting longer than this: orange; longer than RED_AFTER: red.
+ORANGE_AFTER = timedelta(minutes=15)
+RED_AFTER = timedelta(hours=24)
+
+
+def status(db, now: datetime | None = None) -> dict:
+    """Section « SIEM » of the administrator Diagnostic (card « Diagnostic :
+    ligne SIEM pour l'administrateur », lot 29, group 8): state, destination,
+    entries sent and waiting, last error."""
+    from sqlalchemy import func
+    now = now or datetime.now(UTC)
+    cfg = config()
+    configured = bool(cfg["host"] or cfg["file"])
+    cursor = int((get_value(db, CURSOR_KEY, {}) or {}).get("seq", 0))
+    waiting = db.scalar(select(func.count()).select_from(SecurityEventRow).where(SecurityEventRow.seq > cursor)) or 0
+    oldest = db.scalar(select(func.min(SecurityEventRow.at)).where(SecurityEventRow.seq > cursor)) if waiting else None
+    if oldest is not None and oldest.tzinfo is None:
+        oldest = oldest.replace(tzinfo=UTC)
+    licensed = licensing.pro_enabled("siem")
+    if not configured:
+        st = "off"
+    elif not licensed:
+        st = "unlicensed"
+    elif state["connected"] or (cfg["file"] and not cfg["host"]):
+        st = "connected"
+    elif state["last_error"]:
+        st = "unreachable"
+    else:
+        st = "waiting"
+    age = now - oldest if oldest is not None else None
+    tone = None if not configured else ("red" if age is not None and age > RED_AFTER else
+                                        "orange" if (age is not None and age > ORANGE_AFTER) or st == "unreachable" else
+                                        "green" if st == "connected" else "orange")
+    return {"state": st, "tone": tone, "host": cfg["host"] or None, "port": cfg["port"] if cfg["host"] else None,
+            "tls": cfg["tls"] if cfg["host"] else None, "format": cfg["format"], "file": bool(cfg["file"]),
+            "sent": state["sent"], "waiting": waiting,
+            "oldest_waiting_at": oldest.isoformat().replace("+00:00", "Z") if oldest else None,
+            "last_error": state["last_error"], "last_error_at": state["last_error_at"]}
 
 
 def start(tasks: list) -> None:
