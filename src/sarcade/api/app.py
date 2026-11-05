@@ -898,6 +898,33 @@ async def add_logbook_note(event_id: str, payload: LogbookNoteIn, db: Session = 
     return data
 
 
+class LogbookNoteIn(BaseModel):
+    """Manual note written in the Main courante (card « Main courante :
+    lisible, filtrable », lot 29.5): text, author, optional position."""
+    actor_id: str = Field(min_length=1, max_length=64)
+    text: str = Field(min_length=1, max_length=2000)
+    lat: float | None = Field(default=None, ge=-90, le=90)
+    lon: float | None = Field(default=None, ge=-180, le=180)
+
+
+@app.post("/api/v0.1/events/{event_id}/logbook/notes", status_code=201)
+async def add_logbook_note(event_id: str, payload: LogbookNoteIn, db: Session = Depends(get_db)):
+    if db.get(EventRow, event_id) is None:
+        raise HTTPException(status_code=404, detail="event_not_found")
+    text = payload.text.strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="empty_note")
+    if payload.lat is not None and payload.lon is not None:
+        text = f"{text} ({payload.lat:.5f}, {payload.lon:.5f})"
+    row = LogbookRow(event_id=event_id, kind="note", object_id=None, actor_id=payload.actor_id,
+                     summary=text, time=datetime.now(UTC))
+    db.add(row); db.commit(); db.refresh(row)
+    data = {"seq": row.seq, "kind": row.kind, "object_id": None, "actor_id": row.actor_id,
+            "summary": row.summary, "time": row.time}
+    await manager.broadcast(event_id, {"type": "logbook.note", "data": jsonable_encoder(data)})
+    return data
+
+
 # Keep last: the web client is mounted at "/" and must not shadow API routes.
 from .web_client import mount_web_client  # noqa: E402
 
