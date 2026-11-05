@@ -91,3 +91,20 @@ def test_rail_pins_and_operator_icon():
             continue
         raise AssertionError(bad)
     assert apply_patch(out, {"operator_icon": None}) == {"rail_pins": ["files", "weather"]}
+
+
+def test_important_messages_kept_without_duplicates():
+    from sarcade.profile import preferences as prefs
+    out = prefs.apply_patch({}, {"important_messages": ["e1/m2", "e1/m1", "e1/m2"]})
+    assert out["important_messages"] == ["e1/m2", "e1/m1"]
+    assert "important_messages" not in prefs.apply_patch(out, {"important_messages": None})
+
+
+def test_important_messages_refused_when_malformed():
+    import pytest
+    from sarcade.profile import preferences as prefs
+    for bad in (["m1"], ["e1/m1/x"], [""], "e1/m1", ["e1/" + "x" * 65], [1]):
+        with pytest.raises(prefs.InvalidPreferences):
+            prefs.apply_patch({}, {"important_messages": bad})
+    with pytest.raises(prefs.InvalidPreferences):
+        prefs.apply_patch({}, {"important_messages": [f"e1/m{i}" for i in range(501)]})
