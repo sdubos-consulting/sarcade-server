@@ -25,6 +25,7 @@ from .serializers import poi_dict, position_dict, with_operator_status
 from sarcade.sync.service import VALID_TYPES, record_operation
 from sarcade.features import service as features
 from sarcade.messages import edit as msg_edit
+from sarcade.messages import reactions as msg_reactions
 from sarcade.messages import attachments as msg_attachments
 from sarcade.pois import service as pois
 from sarcade.messages import deletion as msg_deletion
@@ -606,6 +607,8 @@ def _apply_operation(db: Session, op: SyncOperationIn, now: datetime,
         return _apply_message_delete(db, op, now, pco)
     if op.object_type == "message" and op.action == "update":
         return _apply_message_edit(db, op, now)
+    if op.object_type == "reaction":
+        return _apply_reaction(db, op, now)
     p = op.payload
     if op.object_type == "ack" and op.action == "create" and db.get(AckRow, op.object_id) is None:
         if db.get(MessageRow, p.get("message_id")) is None:
@@ -746,6 +749,29 @@ def _apply_message_edit(db: Session, op: SyncOperationIn, now: datetime) -> tupl
         db, event_id=op.event_id, operation_id=op.operation_id, object_id=op.object_id,
         object_type="message", action="update", payload=data, client_time=op.client_time)
     return status, cursor, {"type": "message.updated", "data": data}
+
+
+def _apply_reaction(db: Session, op: SyncOperationIn, now: datetime) -> tuple[str, int, dict | None]:
+    """Reaction set (create, update) or removed (delete), lot 29, group 7."""
+    existing = db.scalar(select(SyncOperationRow).where(SyncOperationRow.operation_id == op.operation_id))
+    if existing is not None:
+        return "duplicate", existing.seq, None
+    try:
+        data = msg_reactions.apply(db, op.event_id, op.payload, now, remove=op.action == "delete")
+    except ValueError as exc:
+        raise SyncRejected({"unknown": "réaction sur un message inconnu de ce serveur",
+                            "protected": "pas de réaction sur un SOS, un ordre ou un message supprimé",
+                            "emoji": "réaction inconnue"}.get(str(exc), "réaction invalide"))
+    status, cursor = record_operation(
+        db, event_id=op.event_id, operation_id=op.operation_id, object_id=op.object_id,
+        object_type="reaction", action=op.action, payload=data, client_time=op.client_time)
+    return status, cursor, {"type": "reaction.updated", "data": data}
+
+
+@app.get("/api/v0.1/events/{event_id}/reactions")
+def list_reactions(event_id: str, db: Session = Depends(get_db)):
+    """Reactions of the event, for a device that comes back (lot 29, group 7)."""
+    return msg_reactions.of_event(db, event_id)
 
 
 @app.get("/api/v0.1/events/{event_id}/messages/{message_id}/versions")
