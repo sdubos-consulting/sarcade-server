@@ -126,6 +126,16 @@ class MessageRow(Base):
     edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     versions: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
+class ReactionRow(Base):
+    """Reaction on a message (lot 29, group 7): one per person and message;
+    not an acknowledgement."""
+    __tablename__ = "message_reactions"
+    message_id: Mapped[str] = mapped_column(ForeignKey("messages.id"), primary_key=True)
+    actor_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    event_id: Mapped[str] = mapped_column(ForeignKey("events.id"), nullable=False, index=True)
+    emoji: Mapped[str] = mapped_column(String(16), nullable=False)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
 class AckRow(Base):
     __tablename__ = "acks"
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
