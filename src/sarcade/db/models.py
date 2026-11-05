@@ -121,6 +121,10 @@ class MessageRow(Base):
     deleted_by_pco: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
     # Reply (31 Oct 2026): id of the quoted message, same event.
     reply_to: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Changed by its author within 15 min (lot 29, group 7): the versions
+    # before, [{body, at}], for the PCO.
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    versions: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
 class AckRow(Base):
     __tablename__ = "acks"
