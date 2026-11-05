@@ -10,6 +10,7 @@ when the connection comes back, without loss (cursor in server_settings).
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 from pathlib import Path
@@ -23,7 +24,7 @@ from sarcade.db.models import SecurityEventRow
 from sarcade.db.session import SessionLocal
 from sarcade.updates.service import get_value, set_value
 
-from . import journal
+from . import event_format, journal
 
 log = logging.getLogger("sarcade.siem")
 CURSOR_KEY = "siem_cursor"
@@ -42,6 +43,10 @@ def frame(line: str) -> bytes:
 
 
 def render(row: SecurityEventRow, fmt: str) -> str:
+    """« syslog » (RFC 5424, default), « json » (journal fields) or « ecs »
+    (common event format, lot 29, group 8)."""
+    if fmt == "ecs":
+        return json.dumps(event_format.from_security(row), sort_keys=True, ensure_ascii=False)
     return journal.to_json_line(row) if fmt == "json" else journal.to_syslog(row)
 
 
