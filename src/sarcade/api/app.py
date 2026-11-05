@@ -36,6 +36,7 @@ from . import routes as routes_api
 from . import navigation as navigation_api
 from . import basemaps as basemaps_api
 from . import admin as admin_api
+from sarcade.logbook import chain as logbook_chain
 from sarcade.security import journal as security_journal, siem, watch as security_watch
 from sarcade import licensing
 from sarcade import modules
@@ -853,7 +854,48 @@ def list_deleted_messages(event_id: str, _pco: str | None = Depends(roles_api.re
 @app.get("/api/v0.1/events/{event_id}/logbook")
 def list_logbook(event_id: str, after: int = Query(0, ge=0), limit: int = Query(500, ge=1, le=2000), db: Session = Depends(get_db)):
     rows = db.scalars(select(LogbookRow).where(LogbookRow.event_id == event_id,LogbookRow.seq > after).order_by(LogbookRow.seq).limit(limit)).all()
-    return [{"seq":r.seq,"kind":r.kind,"object_id":r.object_id,"actor_id":r.actor_id,"summary":r.summary,"time":r.time} for r in rows]
+    return [{"seq":r.seq,"kind":r.kind,"object_id":r.object_id,"actor_id":r.actor_id,"summary":r.summary,"time":r.time,
+             "hash":r.hash} for r in rows]
+
+
+# Every new entry of the Main courante is chained (lot 29, group 8).
+logbook_chain.install()
+
+
+@app.get("/api/v0.1/events/{event_id}/logbook/verify")
+def verify_logbook(event_id: str, _pco: str | None = Depends(roles_api.require_pco), db: Session = Depends(get_db)):
+    """« Main courante intègre », or the entry where the chain breaks (PCO
+    and administrators)."""
+    if db.get(EventRow, event_id) is None:
+        raise HTTPException(status_code=404, detail="event_not_found")
+    return logbook_chain.verify(db, event_id)
+
+
+class LogbookNoteIn(BaseModel):
+    """Manual note written in the Main courante (card « Main courante :
+    lisible, filtrable », lot 29.5): text, author, optional position."""
+    actor_id: str = Field(min_length=1, max_length=64)
+    text: str = Field(min_length=1, max_length=2000)
+    lat: float | None = Field(default=None, ge=-90, le=90)
+    lon: float | None = Field(default=None, ge=-180, le=180)
+
+
+@app.post("/api/v0.1/events/{event_id}/logbook/notes", status_code=201)
+async def add_logbook_note(event_id: str, payload: LogbookNoteIn, db: Session = Depends(get_db)):
+    if db.get(EventRow, event_id) is None:
+        raise HTTPException(status_code=404, detail="event_not_found")
+    text = payload.text.strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="empty_note")
+    if payload.lat is not None and payload.lon is not None:
+        text = f"{text} ({payload.lat:.5f}, {payload.lon:.5f})"
+    row = LogbookRow(event_id=event_id, kind="note", object_id=None, actor_id=payload.actor_id,
+                     summary=text, time=datetime.now(UTC))
+    db.add(row); db.commit(); db.refresh(row)
+    data = {"seq": row.seq, "kind": row.kind, "object_id": None, "actor_id": row.actor_id,
+            "summary": row.summary, "time": row.time}
+    await manager.broadcast(event_id, {"type": "logbook.note", "data": jsonable_encoder(data)})
+    return data
 
 
 class LogbookNoteIn(BaseModel):
