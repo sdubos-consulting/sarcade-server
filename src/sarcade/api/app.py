@@ -36,6 +36,7 @@ from . import routes as routes_api
 from . import navigation as navigation_api
 from . import basemaps as basemaps_api
 from . import admin as admin_api
+from sarcade.logbook import chain as logbook_chain
 from sarcade.security import journal as security_journal, siem, watch as security_watch
 from sarcade import licensing
 from sarcade import modules
@@ -853,7 +854,21 @@ def list_deleted_messages(event_id: str, _pco: str | None = Depends(roles_api.re
 @app.get("/api/v0.1/events/{event_id}/logbook")
 def list_logbook(event_id: str, after: int = Query(0, ge=0), limit: int = Query(500, ge=1, le=2000), db: Session = Depends(get_db)):
     rows = db.scalars(select(LogbookRow).where(LogbookRow.event_id == event_id,LogbookRow.seq > after).order_by(LogbookRow.seq).limit(limit)).all()
-    return [{"seq":r.seq,"kind":r.kind,"object_id":r.object_id,"actor_id":r.actor_id,"summary":r.summary,"time":r.time} for r in rows]
+    return [{"seq":r.seq,"kind":r.kind,"object_id":r.object_id,"actor_id":r.actor_id,"summary":r.summary,"time":r.time,
+             "hash":r.hash} for r in rows]
+
+
+# Every new entry of the Main courante is chained (lot 29, group 8).
+logbook_chain.install()
+
+
+@app.get("/api/v0.1/events/{event_id}/logbook/verify")
+def verify_logbook(event_id: str, _pco: str | None = Depends(roles_api.require_pco), db: Session = Depends(get_db)):
+    """« Main courante intègre », or the entry where the chain breaks (PCO
+    and administrators)."""
+    if db.get(EventRow, event_id) is None:
+        raise HTTPException(status_code=404, detail="event_not_found")
+    return logbook_chain.verify(db, event_id)
 
 
 class LogbookNoteIn(BaseModel):

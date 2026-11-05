@@ -140,6 +140,9 @@ class LogbookRow(Base):
     actor_id: Mapped[str | None] = mapped_column(String(64))
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Chain of the entries of the event (lot 29, group 8): null before it.
+    prev_hash: Mapped[str | None] = mapped_column(String(64))
+    hash: Mapped[str | None] = mapped_column(String(64))
 
 
 class SharedFileRow(Base):
