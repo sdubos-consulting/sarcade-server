@@ -58,6 +58,7 @@ from . import personal_files as personal_files_api
 from . import file_folders as file_folders_api
 from sarcade.files import folders as file_folders
 from . import roles as roles_api
+from . import photos as photos_api
 from . import auth as auth_api
 from . import directory as directory_api
 from . import event_access as event_access_api
@@ -141,6 +142,7 @@ app.include_router(profile_api.router)
 app.include_router(personal_files_api.router)
 app.include_router(file_folders_api.router)
 app.include_router(roles_api.router)
+app.include_router(photos_api.router)
 app.include_router(auth_api.router)
 app.include_router(directory_api.router)
 app.include_router(event_access_api.router)
