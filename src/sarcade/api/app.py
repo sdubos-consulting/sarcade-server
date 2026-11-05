@@ -18,11 +18,14 @@ from sqlalchemy.exc import DataError, IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from sarcade.db.models import AckRow, EventRow, LogbookRow, MapFeatureRow, MessageRow, POIRow, PositionRow, SharedFileRow, SyncOperationRow, TeamRow
+from sarcade.realtime import typing as realtime_typing
 from sarcade.realtime.manager import manager
 from .schemas import EventCreate, EventOut, POICreate, POIOut, PositionCreate, PositionOut, SyncOperationIn, SyncResultOut, TeamCreate, TeamOut
 from .serializers import poi_dict, position_dict, with_operator_status
 from sarcade.sync.service import VALID_TYPES, record_operation
 from sarcade.features import service as features
+from sarcade.messages import edit as msg_edit
+from sarcade.messages import reactions as msg_reactions
 from sarcade.messages import attachments as msg_attachments
 from sarcade.pois import service as pois
 from sarcade.messages import deletion as msg_deletion
@@ -56,6 +59,7 @@ from . import personal_files as personal_files_api
 from . import file_folders as file_folders_api
 from sarcade.files import folders as file_folders
 from . import roles as roles_api
+from . import photos as photos_api
 from . import auth as auth_api
 from . import directory as directory_api
 from . import event_access as event_access_api
@@ -139,6 +143,7 @@ app.include_router(profile_api.router)
 app.include_router(personal_files_api.router)
 app.include_router(file_folders_api.router)
 app.include_router(roles_api.router)
+app.include_router(photos_api.router)
 app.include_router(auth_api.router)
 app.include_router(directory_api.router)
 app.include_router(event_access_api.router)
@@ -373,8 +378,14 @@ async def event_websocket(websocket: WebSocket, event_id: str):
             # « ping » from the clients every 30 s: the answer proves the
             # channel is alive end to end (a connection can stay open on the
             # client side behind a proxy while it is dead on the server side).
-            if (await websocket.receive_text()).strip() == "ping":
+            text = (await websocket.receive_text()).strip()
+            if text == "ping":
                 await websocket.send_json({"type": "pong", "data": {}})
+                continue
+            # « en train d'écrire… » (lot 29, group 7): relayed to the others.
+            signal = realtime_typing.read(event_id, text)
+            if signal is not None:
+                await manager.broadcast(event_id, signal, exclude=websocket)
     except WebSocketDisconnect:
         manager.disconnect(event_id, websocket)
 
@@ -596,6 +607,10 @@ def _apply_operation(db: Session, op: SyncOperationIn, now: datetime,
                          "recipients": op.payload.get("recipient_ids") or []}))
     if op.object_type == "message" and op.action == "delete":
         return _apply_message_delete(db, op, now, pco)
+    if op.object_type == "message" and op.action == "update":
+        return _apply_message_edit(db, op, now)
+    if op.object_type == "reaction":
+        return _apply_reaction(db, op, now)
     p = op.payload
     if op.object_type == "ack" and op.action == "create" and db.get(AckRow, op.object_id) is None:
         if db.get(MessageRow, p.get("message_id")) is None:
@@ -711,6 +726,63 @@ def _apply_message_delete(db: Session, op: SyncOperationIn, now: datetime, pco: 
         db, event_id=op.event_id, operation_id=op.operation_id, object_id=op.object_id,
         object_type="message", action="delete", payload=data, client_time=op.client_time)
     return status, cursor, {"type": "message.deleted", "data": data}
+
+
+def _apply_message_edit(db: Session, op: SyncOperationIn, now: datetime) -> tuple[str, int, dict | None]:
+    """Change of a message by its author within 15 min (lot 29, group 7)."""
+    existing = db.scalar(select(SyncOperationRow).where(SyncOperationRow.operation_id == op.operation_id))
+    if existing is not None:
+        return "duplicate", existing.seq, None
+    row = db.get(MessageRow, op.object_id)
+    if row is None or row.event_id != op.event_id:
+        raise SyncRejected("modification d'un message inconnu de ce serveur")
+    actor = str(op.payload.get("edited_by") or "")[:64]
+    body = str(op.payload.get("body") or "").strip()
+    if not body or len(body) > msg_edit.MAX_BODY:
+        raise SyncRejected("texte du message vide ou trop long")
+    reason = msg_edit.allowed(row, actor, now)
+    if reason is not None:
+        raise SyncRejected({"protected": "modification refusée : message de détresse ou ordre",
+                            "deleted": "modification refusée : message supprimé",
+                            "not_author": "modification refusée : réservée à l'auteur",
+                            "too_late": "modification refusée : plus de 15 minutes après l'envoi"}[reason])
+    data = msg_edit.apply(db, row, body, actor, now)
+    status, cursor = record_operation(
+        db, event_id=op.event_id, operation_id=op.operation_id, object_id=op.object_id,
+        object_type="message", action="update", payload=data, client_time=op.client_time)
+    return status, cursor, {"type": "message.updated", "data": data}
+
+
+def _apply_reaction(db: Session, op: SyncOperationIn, now: datetime) -> tuple[str, int, dict | None]:
+    """Reaction set (create, update) or removed (delete), lot 29, group 7."""
+    existing = db.scalar(select(SyncOperationRow).where(SyncOperationRow.operation_id == op.operation_id))
+    if existing is not None:
+        return "duplicate", existing.seq, None
+    try:
+        data = msg_reactions.apply(db, op.event_id, op.payload, now, remove=op.action == "delete")
+    except ValueError as exc:
+        raise SyncRejected({"unknown": "réaction sur un message inconnu de ce serveur",
+                            "protected": "pas de réaction sur un SOS, un ordre ou un message supprimé",
+                            "emoji": "réaction inconnue"}.get(str(exc), "réaction invalide"))
+    status, cursor = record_operation(
+        db, event_id=op.event_id, operation_id=op.operation_id, object_id=op.object_id,
+        object_type="reaction", action=op.action, payload=data, client_time=op.client_time)
+    return status, cursor, {"type": "reaction.updated", "data": data}
+
+
+@app.get("/api/v0.1/events/{event_id}/reactions")
+def list_reactions(event_id: str, db: Session = Depends(get_db)):
+    """Reactions of the event, for a device that comes back (lot 29, group 7)."""
+    return msg_reactions.of_event(db, event_id)
+
+
+@app.get("/api/v0.1/events/{event_id}/messages/{message_id}/versions")
+def message_versions(event_id: str, message_id: str, _pco: str | None = Depends(roles_api.require_pco), db: Session = Depends(get_db)):
+    """« Historique » of a changed message (PCO and administrators)."""
+    row = db.get(MessageRow, message_id)
+    if row is None or row.event_id != event_id:
+        raise HTTPException(status_code=404, detail="message_not_found")
+    return {"id": row.id, "body": row.body, "edited_at": row.edited_at, "versions": row.versions or []}
 
 
 _REJECT_REASONS = {"route": "route invalide ou non autorisée", "route_waypoint": "point de passage invalide",
