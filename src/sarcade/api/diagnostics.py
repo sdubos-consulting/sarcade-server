@@ -33,6 +33,7 @@ from sarcade.accounts.caller import caller_of
 from sarcade.modules import hooks as module_hooks
 from sarcade.db.models import ServerUpdateRow, WeatherCacheRow
 from sarcade.realtime.manager import manager
+from sarcade.security import siem
 from sarcade.updates import service as updates
 from sarcade.wakeup import fcm, service as wakeup
 
@@ -222,7 +223,8 @@ async def server_diagnostics(request: Request, db: Session = Depends(get_db)):
            "last_update": _last_update(db), "last_backup": _last_backup(db),
            "update_status": updates.get_value(db, "update_status")}
     if level == "admin":
-        out.update(build=info, addresses=addresses(), mail=await mail_block(db), deadlines=deadlines.view(db, now))
+        out.update(build=info, addresses=addresses(), mail=await mail_block(db), deadlines=deadlines.view(db, now),
+                   siem=siem.status(db, now))
     return out
 
 
@@ -283,6 +285,16 @@ async def mail_test(request: Request, db: Session = Depends(get_db), admin: str 
     db.commit()
     _probe.update(key=None)
     return {"status": "sent", "to": admin, "at": now.isoformat().replace("+00:00", "Z")}
+
+
+@router.post("/admin/siem/test")
+def siem_test(request: Request, db: Session = Depends(get_db), admin: str = Depends(require_server_admin)):
+    """« Envoyer un événement d'essai » (lot 29, group 8): an entry of the
+    security journal, forwarded to the SIEM like the others."""
+    from sarcade.security import journal
+    row = journal.record(db, "admin", "siem_test", "info", actor=admin, source_ip=client_ip(request))
+    db.commit()
+    return {"status": "queued", "seq": row.seq, "siem": siem.status(db)}
 
 
 @router.get("/version")
