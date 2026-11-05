@@ -25,6 +25,7 @@ from sarcade.sync.service import VALID_TYPES, record_operation
 from sarcade.features import service as features
 from sarcade.messages import edit as msg_edit
 from sarcade.messages import reactions as msg_reactions
+from sarcade.messages import forward as msg_forward
 from sarcade.messages import attachments as msg_attachments
 from sarcade.pois import service as pois
 from sarcade.messages import deletion as msg_deletion
@@ -591,6 +592,12 @@ def _apply_operation(db: Session, op: SyncOperationIn, now: datetime,
         except ValueError:
             raise SyncRejected("pièces jointes invalides")
         op.payload["reply_to"] = msg_reply.clean_reply_to(db, op.event_id, op.payload.get("reply_to"))
+        try:
+            op.payload["forwarded_from"] = msg_forward.clean_forwarded_from(db, op.event_id, op.payload.get("forwarded_from"))
+        except ValueError:
+            raise SyncRejected("transfert d'un message supprimé")
+        if op.payload["forwarded_from"] is None:
+            op.payload.pop("forwarded_from")
         if not groups_api.message_allowed(db, op.event_id, op.payload.get("sender_id", ""),
                                           op.payload.get("recipient_ids")):
             raise SyncRejected("envoi non autorisé dans ce groupe (écoute seule)", journal=dict(
@@ -645,10 +652,11 @@ def _apply_operation(db: Session, op: SyncOperationIn, now: datetime,
         row = MessageRow(id=op.object_id, event_id=op.event_id, sender_id=p["sender_id"],
             recipient_ids=p.get("recipient_ids", []), priority=p.get("priority", "routine"),
             body=p["body"], attachments=p["attachments"] or None,
-            created_at=_iso(p["created_at"]), reply_to=p.get("reply_to"))
+            created_at=_iso(p["created_at"]), reply_to=p.get("reply_to"), forwarded_from=p.get("forwarded_from"))
         db.add(row); db.flush()
         db.add(LogbookRow(event_id=op.event_id, kind="message", object_id=row.id,
-            actor_id=row.sender_id, summary=msg_attachments.logbook_summary(row.body, p["attachments"]),
+            actor_id=row.sender_id, summary=msg_forward.logbook_summary(
+                msg_attachments.logbook_summary(row.body, p["attachments"]), p.get("forwarded_from")),
             time=row.created_at))
         db.flush()
         return status, cursor, {"type": "message.created", "data": p}
