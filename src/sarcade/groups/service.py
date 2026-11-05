@@ -28,7 +28,7 @@ MAX_ID = 64
 # Default ADRASEC groups, validated on 10 Oct 2026. ``roles`` describes who
 # belongs to the group until real roles exist (ADR-002).
 DEFAULT_GROUPS = (
-    {"key": "tous", "name": "Tous", "kind": "all", "mode": "discussion", "color": 0xFF546E7A,
+    {"key": "tous", "name": "Tous", "kind": "all", "mode": "discussion", "color": 0xFF1565C0,
      "roles": ["*"], "description": "Messages généraux, tous les participants"},
     {"key": "diffusion-pco", "name": "Diffusion PCO", "kind": "default", "mode": "listen_only",
      "color": 0xFFC62828, "roles": ["*"], "senders": ["PCO"],
