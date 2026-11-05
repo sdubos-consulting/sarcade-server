@@ -89,6 +89,8 @@ async def lifespan(_app):
     siem.start(_background_tasks)
     event_contacts.start(_background_tasks)
     deadlines.start(_background_tasks)
+    from sarcade.logbook import nightly as logbook_nightly
+    logbook_nightly.start(_background_tasks)
     yield
     for task in _background_tasks:
         task.cancel()
