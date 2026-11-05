@@ -18,6 +18,7 @@ from sqlalchemy.exc import DataError, IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from sarcade.db.models import AckRow, EventRow, LogbookRow, MapFeatureRow, MessageRow, POIRow, PositionRow, SharedFileRow, SyncOperationRow, TeamRow
+from sarcade.realtime import typing as realtime_typing
 from sarcade.realtime.manager import manager
 from .schemas import EventCreate, EventOut, POICreate, POIOut, PositionCreate, PositionOut, SyncOperationIn, SyncResultOut, TeamCreate, TeamOut
 from .serializers import poi_dict, position_dict, with_operator_status
@@ -372,8 +373,14 @@ async def event_websocket(websocket: WebSocket, event_id: str):
             # « ping » from the clients every 30 s: the answer proves the
             # channel is alive end to end (a connection can stay open on the
             # client side behind a proxy while it is dead on the server side).
-            if (await websocket.receive_text()).strip() == "ping":
+            text = (await websocket.receive_text()).strip()
+            if text == "ping":
                 await websocket.send_json({"type": "pong", "data": {}})
+                continue
+            # « en train d'écrire… » (lot 29, group 7): relayed to the others.
+            signal = realtime_typing.read(event_id, text)
+            if signal is not None:
+                await manager.broadcast(event_id, signal, exclude=websocket)
     except WebSocketDisconnect:
         manager.disconnect(event_id, websocket)
 
