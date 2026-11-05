@@ -24,6 +24,7 @@ from .schemas import EventCreate, EventOut, POICreate, POIOut, PositionCreate, P
 from .serializers import poi_dict, position_dict, with_operator_status
 from sarcade.sync.service import VALID_TYPES, record_operation
 from sarcade.features import service as features
+from sarcade.messages import edit as msg_edit
 from sarcade.messages import attachments as msg_attachments
 from sarcade.pois import service as pois
 from sarcade.messages import deletion as msg_deletion
@@ -37,6 +38,7 @@ from . import routes as routes_api
 from . import navigation as navigation_api
 from . import basemaps as basemaps_api
 from . import admin as admin_api
+from sarcade.logbook import chain as logbook_chain
 from sarcade.security import journal as security_journal, siem, watch as security_watch
 from sarcade import licensing
 from sarcade import modules
@@ -602,6 +604,8 @@ def _apply_operation(db: Session, op: SyncOperationIn, now: datetime,
                          "recipients": op.payload.get("recipient_ids") or []}))
     if op.object_type == "message" and op.action == "delete":
         return _apply_message_delete(db, op, now, pco)
+    if op.object_type == "message" and op.action == "update":
+        return _apply_message_edit(db, op, now)
     p = op.payload
     if op.object_type == "ack" and op.action == "create" and db.get(AckRow, op.object_id) is None:
         if db.get(MessageRow, p.get("message_id")) is None:
@@ -717,6 +721,40 @@ def _apply_message_delete(db: Session, op: SyncOperationIn, now: datetime, pco: 
         db, event_id=op.event_id, operation_id=op.operation_id, object_id=op.object_id,
         object_type="message", action="delete", payload=data, client_time=op.client_time)
     return status, cursor, {"type": "message.deleted", "data": data}
+
+
+def _apply_message_edit(db: Session, op: SyncOperationIn, now: datetime) -> tuple[str, int, dict | None]:
+    """Change of a message by its author within 15 min (lot 29, group 7)."""
+    existing = db.scalar(select(SyncOperationRow).where(SyncOperationRow.operation_id == op.operation_id))
+    if existing is not None:
+        return "duplicate", existing.seq, None
+    row = db.get(MessageRow, op.object_id)
+    if row is None or row.event_id != op.event_id:
+        raise SyncRejected("modification d'un message inconnu de ce serveur")
+    actor = str(op.payload.get("edited_by") or "")[:64]
+    body = str(op.payload.get("body") or "").strip()
+    if not body or len(body) > msg_edit.MAX_BODY:
+        raise SyncRejected("texte du message vide ou trop long")
+    reason = msg_edit.allowed(row, actor, now)
+    if reason is not None:
+        raise SyncRejected({"protected": "modification refusée : message de détresse ou ordre",
+                            "deleted": "modification refusée : message supprimé",
+                            "not_author": "modification refusée : réservée à l'auteur",
+                            "too_late": "modification refusée : plus de 15 minutes après l'envoi"}[reason])
+    data = msg_edit.apply(db, row, body, actor, now)
+    status, cursor = record_operation(
+        db, event_id=op.event_id, operation_id=op.operation_id, object_id=op.object_id,
+        object_type="message", action="update", payload=data, client_time=op.client_time)
+    return status, cursor, {"type": "message.updated", "data": data}
+
+
+@app.get("/api/v0.1/events/{event_id}/messages/{message_id}/versions")
+def message_versions(event_id: str, message_id: str, _pco: str | None = Depends(roles_api.require_pco), db: Session = Depends(get_db)):
+    """« Historique » of a changed message (PCO and administrators)."""
+    row = db.get(MessageRow, message_id)
+    if row is None or row.event_id != event_id:
+        raise HTTPException(status_code=404, detail="message_not_found")
+    return {"id": row.id, "body": row.body, "edited_at": row.edited_at, "versions": row.versions or []}
 
 
 _REJECT_REASONS = {"route": "route invalide ou non autorisée", "route_waypoint": "point de passage invalide",
@@ -860,7 +898,48 @@ def list_deleted_messages(event_id: str, _pco: str | None = Depends(roles_api.re
 @app.get("/api/v0.1/events/{event_id}/logbook")
 def list_logbook(event_id: str, after: int = Query(0, ge=0), limit: int = Query(500, ge=1, le=2000), db: Session = Depends(get_db)):
     rows = db.scalars(select(LogbookRow).where(LogbookRow.event_id == event_id,LogbookRow.seq > after).order_by(LogbookRow.seq).limit(limit)).all()
-    return [{"seq":r.seq,"kind":r.kind,"object_id":r.object_id,"actor_id":r.actor_id,"summary":r.summary,"time":r.time} for r in rows]
+    return [{"seq":r.seq,"kind":r.kind,"object_id":r.object_id,"actor_id":r.actor_id,"summary":r.summary,"time":r.time,
+             "hash":r.hash} for r in rows]
+
+
+# Every new entry of the Main courante is chained (lot 29, group 8).
+logbook_chain.install()
+
+
+@app.get("/api/v0.1/events/{event_id}/logbook/verify")
+def verify_logbook(event_id: str, _pco: str | None = Depends(roles_api.require_pco), db: Session = Depends(get_db)):
+    """« Main courante intègre », or the entry where the chain breaks (PCO
+    and administrators)."""
+    if db.get(EventRow, event_id) is None:
+        raise HTTPException(status_code=404, detail="event_not_found")
+    return logbook_chain.verify(db, event_id)
+
+
+class LogbookNoteIn(BaseModel):
+    """Manual note written in the Main courante (card « Main courante :
+    lisible, filtrable », lot 29.5): text, author, optional position."""
+    actor_id: str = Field(min_length=1, max_length=64)
+    text: str = Field(min_length=1, max_length=2000)
+    lat: float | None = Field(default=None, ge=-90, le=90)
+    lon: float | None = Field(default=None, ge=-180, le=180)
+
+
+@app.post("/api/v0.1/events/{event_id}/logbook/notes", status_code=201)
+async def add_logbook_note(event_id: str, payload: LogbookNoteIn, db: Session = Depends(get_db)):
+    if db.get(EventRow, event_id) is None:
+        raise HTTPException(status_code=404, detail="event_not_found")
+    text = payload.text.strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="empty_note")
+    if payload.lat is not None and payload.lon is not None:
+        text = f"{text} ({payload.lat:.5f}, {payload.lon:.5f})"
+    row = LogbookRow(event_id=event_id, kind="note", object_id=None, actor_id=payload.actor_id,
+                     summary=text, time=datetime.now(UTC))
+    db.add(row); db.commit(); db.refresh(row)
+    data = {"seq": row.seq, "kind": row.kind, "object_id": None, "actor_id": row.actor_id,
+            "summary": row.summary, "time": row.time}
+    await manager.broadcast(event_id, {"type": "logbook.note", "data": jsonable_encoder(data)})
+    return data
 
 
 class LogbookNoteIn(BaseModel):
