@@ -178,3 +178,41 @@ def test_me_gives_the_summary_to_the_administrators(client, monkeypatch):
     assert client.get("/api/v0.1/me").json()["deadlines"]["worst"] in ("green", "orange", "red", "expired")
     who["email"] = "a@x.fr"
     assert "deadlines" not in client.get("/api/v0.1/me").json()
+
+
+def test_certificate_of_the_siem_when_it_is_reached_in_tls(db, monkeypatch):
+    """Card « Diagnostic : ligne SIEM », choice 4 (lot 29, group 8)."""
+    seen = []
+
+    def reader(host, port=443):
+        seen.append((host, port))
+        return NOW + timedelta(days=20)
+    monkeypatch.setenv("SARCADE_SIEM_HOST", "siem.local")
+    monkeypatch.setenv("SARCADE_SIEM_PORT", "6514")
+    deadlines.read_siem_tls(db, NOW, reader)
+    db.flush()
+    assert seen == [("siem.local", 6514)]
+    row = next(r for r in deadlines.view(db, NOW)["items"] if r["id"] == "siem-tls")
+    assert row["name"] == "Certificat du SIEM (siem.local)" and row["days_left"] == 20 and row["level"] == "orange"
+
+
+def test_no_certificate_of_the_siem_without_tls(db, monkeypatch):
+    monkeypatch.setenv("SARCADE_SIEM_HOST", "siem.local")
+    monkeypatch.setenv("SARCADE_SIEM_TLS", "0")
+    deadlines.read_siem_tls(db, NOW, lambda *a: NOW)
+    monkeypatch.delenv("SARCADE_SIEM_HOST")
+    deadlines.read_siem_tls(db, NOW, lambda *a: NOW)
+    assert all(r["id"] != "siem-tls" for r in deadlines.view(db, NOW)["items"])
+
+
+def test_siem_unreachable_keeps_the_last_reading(db, monkeypatch):
+    monkeypatch.setenv("SARCADE_SIEM_HOST", "siem.local")
+    deadlines.read_siem_tls(db, NOW, lambda h, p: NOW + timedelta(days=200))
+    db.flush()
+
+    def down(h, p):
+        raise OSError("refused")
+    deadlines.read_siem_tls(db, NOW, down)
+    db.flush()
+    row = next(r for r in deadlines.view(db, NOW)["items"] if r["id"] == "siem-tls")
+    assert row["days_left"] == 200
