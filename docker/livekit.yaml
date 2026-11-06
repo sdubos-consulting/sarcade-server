@@ -1,0 +1,15 @@
+# LiveKit for the PTT natif of SARCADE (docs/ptt-v0.1.md).
+# Keys come from LIVEKIT_KEYS (docker-compose.yml, values in .env).
+port: 7880
+rtc:
+  # One UDP port for every voice, opened on the box toward the NAS.
+  udp_port: 7882
+  # Fallback over TCP when UDP is blocked (hotel Wi-Fi, some 4G).
+  tcp_port: 7881
+  # Public address found by STUN: devices outside the local network.
+  use_external_ip: true
+room:
+  # Rooms closed 5 minutes after the last person left.
+  empty_timeout: 300
+logging:
+  level: info
