@@ -26,6 +26,7 @@ from sarcade.sync.service import VALID_TYPES, record_operation
 from sarcade.features import service as features
 from sarcade.messages import edit as msg_edit
 from sarcade.messages import reactions as msg_reactions
+from sarcade.messages import forward as msg_forward
 from sarcade.messages import attachments as msg_attachments
 from sarcade.pois import service as pois
 from sarcade.messages import deletion as msg_deletion
@@ -59,6 +60,7 @@ from . import personal_files as personal_files_api
 from . import file_folders as file_folders_api
 from sarcade.files import folders as file_folders
 from . import roles as roles_api
+from . import photos as photos_api
 from . import auth as auth_api
 from . import directory as directory_api
 from . import event_access as event_access_api
@@ -90,6 +92,8 @@ async def lifespan(_app):
     siem.start(_background_tasks)
     event_contacts.start(_background_tasks)
     deadlines.start(_background_tasks)
+    from sarcade.logbook import nightly as logbook_nightly
+    logbook_nightly.start(_background_tasks)
     yield
     for task in _background_tasks:
         task.cancel()
@@ -142,6 +146,7 @@ app.include_router(profile_api.router)
 app.include_router(personal_files_api.router)
 app.include_router(file_folders_api.router)
 app.include_router(roles_api.router)
+app.include_router(photos_api.router)
 app.include_router(auth_api.router)
 app.include_router(directory_api.router)
 app.include_router(event_access_api.router)
@@ -596,6 +601,12 @@ def _apply_operation(db: Session, op: SyncOperationIn, now: datetime,
         except ValueError:
             raise SyncRejected("pièces jointes invalides")
         op.payload["reply_to"] = msg_reply.clean_reply_to(db, op.event_id, op.payload.get("reply_to"))
+        try:
+            op.payload["forwarded_from"] = msg_forward.clean_forwarded_from(db, op.event_id, op.payload.get("forwarded_from"))
+        except ValueError:
+            raise SyncRejected("transfert d'un message supprimé")
+        if op.payload["forwarded_from"] is None:
+            op.payload.pop("forwarded_from")
         if not groups_api.message_allowed(db, op.event_id, op.payload.get("sender_id", ""),
                                           op.payload.get("recipient_ids")):
             raise SyncRejected("envoi non autorisé dans ce groupe (écoute seule)", journal=dict(
@@ -650,10 +661,11 @@ def _apply_operation(db: Session, op: SyncOperationIn, now: datetime,
         row = MessageRow(id=op.object_id, event_id=op.event_id, sender_id=p["sender_id"],
             recipient_ids=p.get("recipient_ids", []), priority=p.get("priority", "routine"),
             body=p["body"], attachments=p["attachments"] or None,
-            created_at=_iso(p["created_at"]), reply_to=p.get("reply_to"))
+            created_at=_iso(p["created_at"]), reply_to=p.get("reply_to"), forwarded_from=p.get("forwarded_from"))
         db.add(row); db.flush()
         db.add(LogbookRow(event_id=op.event_id, kind="message", object_id=row.id,
-            actor_id=row.sender_id, summary=msg_attachments.logbook_summary(row.body, p["attachments"]),
+            actor_id=row.sender_id, summary=msg_forward.logbook_summary(
+                msg_attachments.logbook_summary(row.body, p["attachments"]), p.get("forwarded_from")),
             time=row.created_at))
         db.flush()
         return status, cursor, {"type": "message.created", "data": p}
@@ -930,6 +942,25 @@ def list_logbook(event_id: str, after: int = Query(0, ge=0), limit: int = Query(
 
 # Every new entry of the Main courante is chained (lot 29, group 8).
 logbook_chain.install()
+
+
+@app.get("/api/v0.1/events/{event_id}/logbook.csv")
+def logbook_csv(event_id: str, _pco: str | None = Depends(roles_api.require_pco), db: Session = Depends(get_db)):
+    """Export of the Main courante in the common format (card « format
+    d'événement commun », choice 4): same columns, same order as the JSON
+    sent to the SIEM, the fingerprint of each row (« infalsifiable »,
+    choice 5). PCO and administrators."""
+    from fastapi.responses import Response
+    from sarcade.security import event_format
+    event = db.get(EventRow, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="event_not_found")
+    rows = db.scalars(select(LogbookRow).where(LogbookRow.event_id == event_id).order_by(LogbookRow.seq)).all()
+    text = event_format.csv_text(event_format.from_logbook(r) for r in rows)
+    name = f"main-courante-{event_id}.csv"
+    # BOM: accents read as they are by the spreadsheets.
+    return Response("\ufeff" + text, media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
 @app.get("/api/v0.1/events/{event_id}/logbook/verify")

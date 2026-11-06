@@ -45,4 +45,4 @@ Une connexion refusée dans le journal de sécurité :
 
 ## Export CSV
 
-Colonnes dans l'ordre de `CSV_COLUMNS` : `event.id`, `@timestamp`, `event.dataset`, `event.action`, `user.id`, `host.id`, `sarcade.event_id`, `geo.location.lat`, `geo.location.lon`, `event.outcome`, `message`, `event.hash`. L'export CSV de la main courante de l'application suivra cet ordre dans un second temps.
+Colonnes dans l'ordre de `CSV_COLUMNS` : `event.id`, `@timestamp`, `event.dataset`, `event.action`, `user.id`, `host.id`, `sarcade.event_id`, `geo.location.lat`, `geo.location.lon`, `event.outcome`, `message`, `event.hash`. `GET /api/v0.1/events/{id}/logbook.csv` (PCO et administrateurs) exporte la main courante dans cet ordre : séparateur « ; », première ligne d'en-tête, UTF-8 avec BOM (accents lus tels quels par les tableurs), l'empreinte de chaque ligne dans `event.hash`.

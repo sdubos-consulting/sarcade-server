@@ -3,7 +3,7 @@ import uuid
 
 from geoalchemy2 import Geography
 from sqlalchemy import false
-from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base
@@ -121,6 +121,8 @@ class MessageRow(Base):
     deleted_by_pco: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
     # Reply (31 Oct 2026): id of the quoted message, same event.
     reply_to: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Forwarded (lot 29, group 7): author and time of the original.
+    forwarded_from: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # Changed by its author within 15 min (lot 29, group 7): the versions
     # before, [{body, at}], for the PCO.
     edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -135,6 +137,17 @@ class ReactionRow(Base):
     event_id: Mapped[str] = mapped_column(ForeignKey("events.id"), nullable=False, index=True)
     emoji: Mapped[str] = mapped_column(String(16), nullable=False)
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+class DevicePhotoRow(Base):
+    """Profile photo of an operator (lot 29, group 7): small image sent by
+    the device itself, seen only by the participants of the event."""
+    __tablename__ = "device_photos"
+    event_id: Mapped[str] = mapped_column(ForeignKey("events.id"), primary_key=True)
+    device_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    mime: Mapped[str] = mapped_column(String(32), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_by: Mapped[str | None] = mapped_column(String(320))
 
 class AckRow(Base):
     __tablename__ = "acks"
