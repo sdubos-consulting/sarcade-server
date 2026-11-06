@@ -35,6 +35,7 @@ log = logging.getLogger("sarcade.deadlines")
 
 KEY = "deadlines"              # manual items
 TLS_KEY = "deadline_tls"       # last reading of the HTTPS certificate
+SIEM_TLS_KEY = "deadline_siem_tls"  # last reading of the certificate of the SIEM
 ALERTS_KEY = "deadline_alerts" # thresholds already announced, per item
 ORANGE_DAYS, RED_DAYS = 30, 7
 THRESHOLDS = (30, 7, 0)
@@ -210,6 +211,31 @@ def _tls_item(db: Session) -> Item | None:
     return Item("tls", f"Certificat HTTPS ({v.get('host')})", _day(v["not_after"]), "auto")
 
 
+def _siem_tls_item(db: Session) -> Item | None:
+    """« Certificat du SIEM » (card « Diagnostic : ligne SIEM », choice 4),
+    when the SIEM is reached in TLS."""
+    v = get_value(db, SIEM_TLS_KEY) or {}
+    if not isinstance(v, dict) or not v.get("not_after"):
+        return None
+    return Item("siem-tls", f"Certificat du SIEM ({v.get('host')})", _day(v["not_after"]), "auto")
+
+
+def read_siem_tls(db: Session, now: datetime, reader=None) -> None:
+    """Reads the certificate of the SIEM once a day; nothing without TLS."""
+    from sarcade.security import siem
+    cfg = siem.config()
+    if not cfg.get("host") or not cfg.get("tls"):
+        return
+    host, port = cfg["host"], int(cfg.get("port") or 6514)
+    try:
+        end = (reader or tls_expiry)(host, port)
+        set_value(db, SIEM_TLS_KEY, {"host": host, "port": port, "not_after": end.isoformat(), "checked_at": now.isoformat()}, now)
+    except Exception as exc:  # noqa: BLE001 - the last reading is kept
+        prev = get_value(db, SIEM_TLS_KEY) or {}
+        set_value(db, SIEM_TLS_KEY, {**(prev if isinstance(prev, dict) else {}), "host": host, "port": port,
+                                     "error": type(exc).__name__, "checked_at": now.isoformat()}, now)
+
+
 def tls_expiry(host: str, port: int = 443, timeout: float = 8) -> datetime:
     """End of validity of the certificate presented by ``host``, read
     without checking it (local certification authority, option B)."""
@@ -245,7 +271,7 @@ def read_tls(db: Session, now: datetime, reader=tls_expiry) -> None:
 def items(db: Session) -> list[Item]:
     out = [Item(d["id"], d["name"], _day(d.get("date")), "manual", d.get("url"), d.get("note"),
                 mail_related=str(d["id"]).startswith("brevo")) for d in manual(db)]
-    out += [i for i in (_tls_item(db), _mail_item(db)) if i is not None]
+    out += [i for i in (_tls_item(db), _siem_tls_item(db), _mail_item(db)) if i is not None]
     out += _licence_items(db)
     return out
 
@@ -325,6 +351,7 @@ def check(db: Session, now: datetime | None = None, sender=None, tls_reader=tls_
     from sarcade.security import journal
     now = now or datetime.now(UTC)
     read_tls(db, now, tls_reader)
+    read_siem_tls(db, now, tls_reader)
     db.flush()
     state = get_value(db, ALERTS_KEY) or {}
     state = dict(state) if isinstance(state, dict) else {}

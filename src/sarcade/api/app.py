@@ -95,6 +95,8 @@ async def lifespan(_app):
     siem.start(_background_tasks)
     event_contacts.start(_background_tasks)
     deadlines.start(_background_tasks)
+    from sarcade.logbook import nightly as logbook_nightly
+    logbook_nightly.start(_background_tasks)
     yield
     for task in _background_tasks:
         task.cancel()
@@ -946,6 +948,25 @@ def list_logbook(event_id: str, after: int = Query(0, ge=0), limit: int = Query(
 
 # Every new entry of the Main courante is chained (lot 29, group 8).
 logbook_chain.install()
+
+
+@app.get("/api/v0.1/events/{event_id}/logbook.csv")
+def logbook_csv(event_id: str, _pco: str | None = Depends(roles_api.require_pco), db: Session = Depends(get_db)):
+    """Export of the Main courante in the common format (card « format
+    d'événement commun », choice 4): same columns, same order as the JSON
+    sent to the SIEM, the fingerprint of each row (« infalsifiable »,
+    choice 5). PCO and administrators."""
+    from fastapi.responses import Response
+    from sarcade.security import event_format
+    event = db.get(EventRow, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="event_not_found")
+    rows = db.scalars(select(LogbookRow).where(LogbookRow.event_id == event_id).order_by(LogbookRow.seq)).all()
+    text = event_format.csv_text(event_format.from_logbook(r) for r in rows)
+    name = f"main-courante-{event_id}.csv"
+    # BOM: accents read as they are by the spreadsheets.
+    return Response("\ufeff" + text, media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
 @app.get("/api/v0.1/events/{event_id}/logbook/verify")
