@@ -37,6 +37,7 @@ from . import operations as event_ops
 from . import groups as groups_api
 from . import weather as weather_api
 from . import ptt as ptt_api
+from . import radar as radar_api
 from . import routes as routes_api
 from . import navigation as navigation_api
 from . import basemaps as basemaps_api
@@ -87,12 +88,16 @@ _wake_tasks: set = set()
 async def lifespan(_app):
     module_hooks.start(_background_tasks)
     weather_service.start(_background_tasks)
+    from sarcade.weather import radar as weather_radar
+    weather_radar.start(_background_tasks)
     navigation_api.start(_background_tasks)
     updates_service.start(_background_tasks)
     licensing.start(_background_tasks)
     siem.start(_background_tasks)
     event_contacts.start(_background_tasks)
     deadlines.start(_background_tasks)
+    from sarcade.logbook import nightly as logbook_nightly
+    logbook_nightly.start(_background_tasks)
     yield
     for task in _background_tasks:
         task.cancel()
@@ -111,7 +116,9 @@ async def no_store_for_api(request, call_next):
     stopped seeing new messages (25 October 2026)."""
     diagnostics.seen_cloudflare(request.headers)
     response = await call_next(request)
-    if request.url.path.startswith("/api/") or request.url.path in ("/health", "/version"):
+    # Except what never changes once made (radar tiles of a given time).
+    if (request.url.path.startswith("/api/") or request.url.path in ("/health", "/version")) \
+            and "immutable" not in response.headers.get("Cache-Control", ""):
         response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -131,6 +138,7 @@ app.include_router(event_ops.router)
 app.include_router(groups_api.router)
 app.include_router(weather_api.router)
 app.include_router(ptt_api.router)
+app.include_router(radar_api.router)
 app.include_router(routes_api.router)
 app.include_router(navigation_api.router)
 app.include_router(basemaps_api.router)
@@ -942,6 +950,25 @@ def list_logbook(event_id: str, after: int = Query(0, ge=0), limit: int = Query(
 
 # Every new entry of the Main courante is chained (lot 29, group 8).
 logbook_chain.install()
+
+
+@app.get("/api/v0.1/events/{event_id}/logbook.csv")
+def logbook_csv(event_id: str, _pco: str | None = Depends(roles_api.require_pco), db: Session = Depends(get_db)):
+    """Export of the Main courante in the common format (card « format
+    d'événement commun », choice 4): same columns, same order as the JSON
+    sent to the SIEM, the fingerprint of each row (« infalsifiable »,
+    choice 5). PCO and administrators."""
+    from fastapi.responses import Response
+    from sarcade.security import event_format
+    event = db.get(EventRow, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="event_not_found")
+    rows = db.scalars(select(LogbookRow).where(LogbookRow.event_id == event_id).order_by(LogbookRow.seq)).all()
+    text = event_format.csv_text(event_format.from_logbook(r) for r in rows)
+    name = f"main-courante-{event_id}.csv"
+    # BOM: accents read as they are by the spreadsheets.
+    return Response("\ufeff" + text, media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
 @app.get("/api/v0.1/events/{event_id}/logbook/verify")

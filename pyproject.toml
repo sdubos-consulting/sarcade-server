@@ -26,6 +26,10 @@ dependencies = [
   "osmium>=3.7,<5",
   # Ed25519 signatures of the SARCADE Pro licences, verified offline.
   "cryptography>=50",
+  # Rain radar of Météo-France: grid, projection, map tiles (lot 29).
+  "numpy>=2.2,<3",
+  "pyproj>=3.7,<4",
+  "pillow>=11,<14",
 ]
 
 [project.optional-dependencies]
