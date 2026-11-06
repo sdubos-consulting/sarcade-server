@@ -36,6 +36,7 @@ from .deps import get_db
 from . import operations as event_ops
 from . import groups as groups_api
 from . import weather as weather_api
+from . import ptt as ptt_api
 from . import routes as routes_api
 from . import navigation as navigation_api
 from . import basemaps as basemaps_api
@@ -129,6 +130,7 @@ async def tv_host_only_display(request, call_next):
 app.include_router(event_ops.router)
 app.include_router(groups_api.router)
 app.include_router(weather_api.router)
+app.include_router(ptt_api.router)
 app.include_router(routes_api.router)
 app.include_router(navigation_api.router)
 app.include_router(basemaps_api.router)

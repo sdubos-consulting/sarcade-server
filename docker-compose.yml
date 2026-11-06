@@ -49,6 +49,11 @@ services:
       # Weather (docs/weather-v0.1.md)
       SARCADE_DEPARTMENT: ${SARCADE_DEPARTMENT:-}
       SARCADE_METEOFRANCE_API_KEY: ${SARCADE_METEOFRANCE_API_KEY:-}
+      # PTT natif (docs/ptt-v0.1.md): address of LiveKit for the devices and
+      # its key, placed by the operator in .env.
+      SARCADE_LIVEKIT_URL: ${SARCADE_LIVEKIT_URL:-}
+      SARCADE_LIVEKIT_API_KEY: ${SARCADE_LIVEKIT_API_KEY:-}
+      SARCADE_LIVEKIT_API_SECRET: ${SARCADE_LIVEKIT_API_SECRET:-}
       # Navigation (docs/navigation-v0.1.md): start with --profile routing.
       SARCADE_VALHALLA_URL: ${SARCADE_VALHALLA_URL:-}
       # Road graph for navigation on the device, built from the same OSM
@@ -131,6 +136,23 @@ services:
       - sarcade-caddy-config:/config
     depends_on:
       - server
+
+  # PTT natif (docker compose --profile ptt up -d), docs/ptt-v0.1.md: LiveKit
+  # (Apache 2.0) carries the voice between the devices; signalling on 7880
+  # (through the tunnel), voice on 7882/udp (a port opened on the box).
+  livekit:
+    profiles: ["ptt"]
+    image: livekit/livekit-server:v1.10
+    restart: unless-stopped
+    command: ["--config", "/etc/livekit.yaml"]
+    environment:
+      LIVEKIT_KEYS: "${SARCADE_LIVEKIT_API_KEY:-}: ${SARCADE_LIVEKIT_API_SECRET:-}"
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "7882:7882/udp"
+    volumes:
+      - ./docker/livekit.yaml:/etc/livekit.yaml:ro
 
   # Navigation level 2 (docker compose --profile routing up -d):
   # OpenStreetMap extract of the ADRASEC department plus 10 km, then Valhalla.
