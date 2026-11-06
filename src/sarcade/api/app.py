@@ -36,6 +36,7 @@ from .deps import get_db
 from . import operations as event_ops
 from . import groups as groups_api
 from . import weather as weather_api
+from . import radar as radar_api
 from . import routes as routes_api
 from . import navigation as navigation_api
 from . import basemaps as basemaps_api
@@ -86,6 +87,8 @@ _wake_tasks: set = set()
 async def lifespan(_app):
     module_hooks.start(_background_tasks)
     weather_service.start(_background_tasks)
+    from sarcade.weather import radar as weather_radar
+    weather_radar.start(_background_tasks)
     navigation_api.start(_background_tasks)
     updates_service.start(_background_tasks)
     licensing.start(_background_tasks)
@@ -112,7 +115,9 @@ async def no_store_for_api(request, call_next):
     stopped seeing new messages (25 October 2026)."""
     diagnostics.seen_cloudflare(request.headers)
     response = await call_next(request)
-    if request.url.path.startswith("/api/") or request.url.path in ("/health", "/version"):
+    # Except what never changes once made (radar tiles of a given time).
+    if (request.url.path.startswith("/api/") or request.url.path in ("/health", "/version")) \
+            and "immutable" not in response.headers.get("Cache-Control", ""):
         response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -131,6 +136,7 @@ async def tv_host_only_display(request, call_next):
 app.include_router(event_ops.router)
 app.include_router(groups_api.router)
 app.include_router(weather_api.router)
+app.include_router(radar_api.router)
 app.include_router(routes_api.router)
 app.include_router(navigation_api.router)
 app.include_router(basemaps_api.router)
