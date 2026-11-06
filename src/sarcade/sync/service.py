@@ -6,7 +6,9 @@ from sarcade.db.models import SyncOperationRow
 VALID_TYPES = {"position", "poi", "message", "ack", "map_feature", "comm_group",
                "route", "route_waypoint", "route_passage", "road_closure", "itinerary", "move_order",
                # Status of the operator in one touch (lot 24).
-               "operator_status"}
+               "operator_status",
+               # Reaction on a message (lot 29, group 7).
+               "reaction"}
 
 def record_operation(db: Session, *, event_id: str, operation_id: str, object_id: str,
                      object_type: str, action: str, payload: dict, client_time: datetime) -> tuple[str, int]:

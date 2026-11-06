@@ -54,6 +54,24 @@ def _pins(v) -> list[str]:
     return out
 
 
+MAX_IMPORTANT = 500
+_IMPORTANT_ID = re.compile(r"^[^/\s]{1,64}/[^/\s]{1,64}$")
+
+
+def _important(v) -> list[str]:
+    """« Messages importants » (lot 29, group 7): « event/message », most
+    recent first, found again on every device of the person."""
+    if not isinstance(v, list) or len(v) > MAX_IMPORTANT:
+        raise InvalidPreferences("invalid_value")
+    out: list[str] = []
+    for x in v:
+        if not isinstance(x, str) or not _IMPORTANT_ID.match(x):
+            raise InvalidPreferences("invalid_value")
+        if x not in out:
+            out.append(x)
+    return out
+
+
 def _icon(v) -> str:
     if v not in OPERATOR_ICONS:
         raise InvalidPreferences("invalid_value")
@@ -71,6 +89,8 @@ KEYS = {
     "rail_pins": _pins,
     # Icon of the operator on the map (1 Nov 2026).
     "operator_icon": _icon,
+    # « Messages importants » (lot 29, group 7).
+    "important_messages": _important,
 }
 
 

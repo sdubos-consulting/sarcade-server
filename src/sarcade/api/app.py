@@ -25,6 +25,8 @@ from .serializers import poi_dict, position_dict, with_operator_status
 from sarcade.sync.service import VALID_TYPES, record_operation
 from sarcade.features import service as features
 from sarcade.messages import edit as msg_edit
+from sarcade.messages import reactions as msg_reactions
+from sarcade.messages import forward as msg_forward
 from sarcade.messages import attachments as msg_attachments
 from sarcade.pois import service as pois
 from sarcade.messages import deletion as msg_deletion
@@ -58,6 +60,7 @@ from . import personal_files as personal_files_api
 from . import file_folders as file_folders_api
 from sarcade.files import folders as file_folders
 from . import roles as roles_api
+from . import photos as photos_api
 from . import auth as auth_api
 from . import directory as directory_api
 from . import event_access as event_access_api
@@ -141,6 +144,7 @@ app.include_router(profile_api.router)
 app.include_router(personal_files_api.router)
 app.include_router(file_folders_api.router)
 app.include_router(roles_api.router)
+app.include_router(photos_api.router)
 app.include_router(auth_api.router)
 app.include_router(directory_api.router)
 app.include_router(event_access_api.router)
@@ -595,6 +599,12 @@ def _apply_operation(db: Session, op: SyncOperationIn, now: datetime,
         except ValueError:
             raise SyncRejected("pièces jointes invalides")
         op.payload["reply_to"] = msg_reply.clean_reply_to(db, op.event_id, op.payload.get("reply_to"))
+        try:
+            op.payload["forwarded_from"] = msg_forward.clean_forwarded_from(db, op.event_id, op.payload.get("forwarded_from"))
+        except ValueError:
+            raise SyncRejected("transfert d'un message supprimé")
+        if op.payload["forwarded_from"] is None:
+            op.payload.pop("forwarded_from")
         if not groups_api.message_allowed(db, op.event_id, op.payload.get("sender_id", ""),
                                           op.payload.get("recipient_ids")):
             raise SyncRejected("envoi non autorisé dans ce groupe (écoute seule)", journal=dict(
@@ -606,6 +616,8 @@ def _apply_operation(db: Session, op: SyncOperationIn, now: datetime,
         return _apply_message_delete(db, op, now, pco)
     if op.object_type == "message" and op.action == "update":
         return _apply_message_edit(db, op, now)
+    if op.object_type == "reaction":
+        return _apply_reaction(db, op, now)
     p = op.payload
     if op.object_type == "ack" and op.action == "create" and db.get(AckRow, op.object_id) is None:
         if db.get(MessageRow, p.get("message_id")) is None:
@@ -647,10 +659,11 @@ def _apply_operation(db: Session, op: SyncOperationIn, now: datetime,
         row = MessageRow(id=op.object_id, event_id=op.event_id, sender_id=p["sender_id"],
             recipient_ids=p.get("recipient_ids", []), priority=p.get("priority", "routine"),
             body=p["body"], attachments=p["attachments"] or None,
-            created_at=_iso(p["created_at"]), reply_to=p.get("reply_to"))
+            created_at=_iso(p["created_at"]), reply_to=p.get("reply_to"), forwarded_from=p.get("forwarded_from"))
         db.add(row); db.flush()
         db.add(LogbookRow(event_id=op.event_id, kind="message", object_id=row.id,
-            actor_id=row.sender_id, summary=msg_attachments.logbook_summary(row.body, p["attachments"]),
+            actor_id=row.sender_id, summary=msg_forward.logbook_summary(
+                msg_attachments.logbook_summary(row.body, p["attachments"]), p.get("forwarded_from")),
             time=row.created_at))
         db.flush()
         return status, cursor, {"type": "message.created", "data": p}
@@ -746,6 +759,29 @@ def _apply_message_edit(db: Session, op: SyncOperationIn, now: datetime) -> tupl
         db, event_id=op.event_id, operation_id=op.operation_id, object_id=op.object_id,
         object_type="message", action="update", payload=data, client_time=op.client_time)
     return status, cursor, {"type": "message.updated", "data": data}
+
+
+def _apply_reaction(db: Session, op: SyncOperationIn, now: datetime) -> tuple[str, int, dict | None]:
+    """Reaction set (create, update) or removed (delete), lot 29, group 7."""
+    existing = db.scalar(select(SyncOperationRow).where(SyncOperationRow.operation_id == op.operation_id))
+    if existing is not None:
+        return "duplicate", existing.seq, None
+    try:
+        data = msg_reactions.apply(db, op.event_id, op.payload, now, remove=op.action == "delete")
+    except ValueError as exc:
+        raise SyncRejected({"unknown": "réaction sur un message inconnu de ce serveur",
+                            "protected": "pas de réaction sur un SOS, un ordre ou un message supprimé",
+                            "emoji": "réaction inconnue"}.get(str(exc), "réaction invalide"))
+    status, cursor = record_operation(
+        db, event_id=op.event_id, operation_id=op.operation_id, object_id=op.object_id,
+        object_type="reaction", action=op.action, payload=data, client_time=op.client_time)
+    return status, cursor, {"type": "reaction.updated", "data": data}
+
+
+@app.get("/api/v0.1/events/{event_id}/reactions")
+def list_reactions(event_id: str, db: Session = Depends(get_db)):
+    """Reactions of the event, for a device that comes back (lot 29, group 7)."""
+    return msg_reactions.of_event(db, event_id)
 
 
 @app.get("/api/v0.1/events/{event_id}/messages/{message_id}/versions")
