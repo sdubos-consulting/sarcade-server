@@ -62,6 +62,8 @@ def public_dict(row: MessageRow) -> dict:
            "attachments": row.attachments or [], "created_at": row.created_at}
     if row.reply_to:
         out["reply_to"] = row.reply_to
+    if getattr(row, "forwarded_from", None):
+        out["forwarded_from"] = row.forwarded_from
     if getattr(row, "edited_at", None) is not None:
         out.update(edited=True, edited_at=row.edited_at)
     if row.deleted_at is not None:

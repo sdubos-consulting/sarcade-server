@@ -85,3 +85,18 @@ def flat(doc: dict, prefix: str = "") -> dict:
         else:
             out[key] = v
     return out
+
+
+def csv_text(docs) -> str:
+    """CSV in the common format (« ; » for the spreadsheets in French, a
+    header row, the columns of [CSV_COLUMNS]); each row carries its
+    fingerprint (event.hash)."""
+    import csv
+    import io
+    buf = io.StringIO()
+    w = csv.writer(buf, delimiter=";", lineterminator="\r\n")
+    w.writerow(CSV_COLUMNS)
+    for doc in docs:
+        row = flat(doc)
+        w.writerow(["" if row.get(c) is None else row.get(c) for c in CSV_COLUMNS])
+    return buf.getvalue()
