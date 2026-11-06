@@ -21,6 +21,17 @@ Spécification : note « Prévisions météo » du vault (décisions du 10 octob
 | `GET /api/v0.1/events/{id}/weather/bulletin` | bulletin en français à publier dans « Diffusion PCO » |
 | `GET /api/v0.1/weather?lat=&lon=` | prévision d'un point désigné, en cache une heure sur une grille d'environ 5 km |
 
+## Radar de pluie (lot 29)
+- Source : **mosaïque radar de Météo-France** (lame d'eau en 5 minutes, métropole, maille 500 m, Licence Ouverte 2.0), API « Radar » du portail des API Météo-France, **même clé** `SARCADE_METEOFRANCE_API_KEY` : l'application du portail doit être abonnée à l'API « Radar ».
+- Le serveur ne télécharge le radar **que si quelqu'un affiche le calque** (15 min après la dernière demande), toutes les 5 minutes ; il garde une heure d'images et sert des tuiles de carte : les appareils ne contactent jamais Météo-France. `SARCADE_RADAR=0` coupe le radar.
+- Fichier HDF5 lu par un petit lecteur intégré (`sarcade/weather/hdf5lite.py`), h5py n'existant pas encore pour Python 3.15 ; un fichier que le lecteur ne sait pas lire est signalé dans l'état du radar (`error`).
+- Couleurs par intensité en mm/h (0,1 · 1 · 2 · 4 · 8 · 16 · 32 · 64), légende fournie par l'API.
+
+| Point d'accès | Rôle |
+|---|---|
+| `GET /api/v0.1/weather/radar` | état (`no_key`, `waiting`, `ok`, `error`), images de la dernière heure, légende, source, `stale` après 20 min |
+| `GET /api/v0.1/weather/radar/{image}/{z}/{x}/{y}.png` | tuile de carte d'une image (transparente hors de la mosaïque), gardée en cache par les appareils |
+
 Le lever et le coucher du soleil sont fournis dans la prévision ; le client les calcule aussi sans réseau.
 
 Vérification : `tests/test_weather.py`, `demo/verify_weather.py` (CI, avec `demo/weather_stub.py` à la place d'Open-Meteo et de la vigilance).
