@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Small hand-made road network near Versailles, for tests and the demo
+     stack (offline routing graph). Not real data. -->
+<osm version="0.6" generator="SARCADE test">
+  <node id="1" lat="48.8000" lon="2.1000" version="1"/>
+  <node id="2" lat="48.8000" lon="2.1100" version="1"/>
+  <node id="3" lat="48.8000" lon="2.1200" version="1"/>
+  <node id="4" lat="48.8100" lon="2.1200" version="1"/>
+  <node id="5" lat="48.8100" lon="2.1000" version="1"/>
+  <node id="6" lat="48.8100" lon="2.1100" version="1"/>
+  <node id="7" lat="48.7950" lon="2.1100" version="1"/>
+  <node id="8" lat="48.8050" lon="2.1150" version="1"/>
+  <way id="101" version="1"><nd ref="1"/><nd ref="2"/><nd ref="3"/>
+    <tag k="highway" v="residential"/><tag k="name" v="Rue A"/></way>
+  <way id="102" version="1"><nd ref="3"/><nd ref="4"/>
+    <tag k="highway" v="primary"/><tag k="ref" v="D30"/><tag k="oneway" v="yes"/></way>
+  <way id="103" version="1"><nd ref="1"/><nd ref="5"/>
+    <tag k="highway" v="track"/><tag k="name" v="Chemin forestier"/></way>
+  <way id="104" version="1"><nd ref="5"/><nd ref="6"/><nd ref="4"/>
+    <tag k="highway" v="footway"/><tag k="name" v="Sentier"/></way>
+  <way id="105" version="1"><nd ref="2"/><nd ref="7"/>
+    <tag k="highway" v="service"/><tag k="access" v="private"/></way>
+  <way id="106" version="1"><nd ref="4"/><nd ref="8"/><nd ref="2"/>
+    <tag k="highway" v="tertiary"/><tag k="name" v="Rue B"/></way>
+</osm>

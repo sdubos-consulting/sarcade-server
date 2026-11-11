@@ -1,0 +1,45 @@
+# Environment
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Runtime
+logs/
+tmp/
+*.log
+
+# Secrets / certificates
+secrets/
+certs/
+*.key
+*.pem
+
+# Docker
+docker-compose.override.yml
+*.egg-info/
+
+# Ephemeral test licence chain (demo/make_test_licence.py)
+demo/licence-test/
+
+# Web client built on the i9 for SARCADE_WEB=local (never committed)
+sarcade-web.tar.gz
+
+# Files of /telechargements, placed by tool/nas/publish-registry.ps1
+/downloads/
+# Offline base maps, placed by tool/nas/publish-registry.ps1
+/tiles/

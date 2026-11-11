@@ -1,0 +1,56 @@
+# Serveur de TEST SARCADE sur le NAS (test.sarcade.org), à côté du serveur
+# d'exploitation (app.sarcade.org). Copié par le bloc d'installation dans
+# /volume1/docker/sarcade-test/compose.yaml (docs/nas-test-server-v0.1.md).
+#
+# Projet Compose à part (« sarcade-test ») : base, fichiers, réseau et port
+# distincts de l'exploitation ; même image (construite depuis le clone
+# ./sarcade-server, qui suit main). Les services gardent les noms de
+# l'exploitation (postgres, server) : sarcade-switch et sarcade-restore
+# s'appliquent tels quels avec SARCADE_ROOT.
+# Réglages et secrets : .env du dossier (lisible par root seulement), jamais
+# dans le dépôt.
+name: sarcade-test
+
+services:
+  postgres:
+    # Même image que l'exploitation (relevée par le bloc d'installation) :
+    # une sauvegarde de l'exploitation se restaure sans écart de version.
+    image: ${SARCADE_TEST_POSTGRES_IMAGE:-postgis/postgis:16-3.4}
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sarcade}
+      POSTGRES_USER: ${POSTGRES_USER:-sarcade}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD absent du .env}
+    volumes:
+      - db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sarcade} -d ${POSTGRES_DB:-sarcade}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  server:
+    build:
+      context: ./sarcade-server
+    restart: unless-stopped
+    # Tous les réglages SARCADE_* du .env du serveur de test.
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-sarcade}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-sarcade}
+      SARCADE_FILE_ROOT: /var/lib/sarcade/files
+      SARCADE_TILES_ROOT: /var/lib/sarcade/tiles
+    ports:
+      # Exploitation : 8000 ; Valhalla : 8002 ; test : 8010 (Cloudflare Tunnel,
+      # même adresse que app.sarcade.org avec le port 8010).
+      - "${SARCADE_TEST_BIND:-0.0.0.0}:${SARCADE_TEST_PORT:-8010}:8000"
+    volumes:
+      - files:/var/lib/sarcade/files
+      - tiles:/var/lib/sarcade/tiles
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  db:
+  files:
+  tiles:

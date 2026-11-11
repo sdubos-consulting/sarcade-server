@@ -1,0 +1,196 @@
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sarcade}
+      POSTGRES_USER: ${POSTGRES_USER:-sarcade}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+    ports:
+      - "5432:5432"
+    volumes:
+      - sarcade-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sarcade} -d ${POSTGRES_DB:-sarcade}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mqtt:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+
+  server:
+    # Image built locally from these sources (no image is published on ghcr.io
+    # any more since 11 November 2026: GitHub only hosts the sources of the
+    # major versions).
+    image: sarcade-server:${SARCADE_IMAGE_TAG:-local}
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-sarcade}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-sarcade}
+      # APRS (docs/aprs-v0.1.md): APRS-IS over the Internet and/or local radio
+      # through a KISS TCP modem such as Dire Wolf on the Gateway.
+      # Address search (docs/geocode-v0.1.md): empty switches it off.
+      SARCADE_GEOCODER_URL: ${SARCADE_GEOCODER_URL-https://api-adresse.data.gouv.fr/search/}
+      SARCADE_APRS_IS: ${SARCADE_APRS_IS:-0}
+      SARCADE_APRS_IS_HOST: ${SARCADE_APRS_IS_HOST:-euro.aprs2.net}
+      SARCADE_APRS_IS_PORT: ${SARCADE_APRS_IS_PORT:-14580}
+      SARCADE_APRS_IS_LOGIN: ${SARCADE_APRS_IS_LOGIN:-}
+      # Wake-up of the devices (docs/wakeup-v0.1.md): Firebase service account
+      # (JSON content or path of the file, placed by the operator) for Android.
+      SARCADE_FCM_SERVICE_ACCOUNT: ${SARCADE_FCM_SERVICE_ACCOUNT:-}
+      SARCADE_VAPID_SUBJECT: ${SARCADE_VAPID_SUBJECT:-}
+      SARCADE_APRS_CALLSIGN: ${SARCADE_APRS_CALLSIGN:-}
+      SARCADE_KISS_HOST: ${SARCADE_KISS_HOST:-}
+      SARCADE_KISS_PORT: ${SARCADE_KISS_PORT:-8001}
+      # ADS-B (module ADRASEC, étape 1) : client API OpenSky ; sans eux, couche Aéronefs vide.
+      SARCADE_OPENSKY_CLIENT_ID: ${SARCADE_OPENSKY_CLIENT_ID:-}
+      SARCADE_OPENSKY_CLIENT_SECRET: ${SARCADE_OPENSKY_CLIENT_SECRET:-}
+      SARCADE_ADSB_INTERVAL_S: ${SARCADE_ADSB_INTERVAL_S:-30}
+      # Weather (docs/weather-v0.1.md)
+      SARCADE_DEPARTMENT: ${SARCADE_DEPARTMENT:-}
+      SARCADE_METEOFRANCE_API_KEY: ${SARCADE_METEOFRANCE_API_KEY:-}
+      # End of validity of the key (ISO date, optional): « Échéances » of the Diagnostic.
+      SARCADE_METEOFRANCE_KEY_EXPIRES: ${SARCADE_METEOFRANCE_KEY_EXPIRES:-}
+      # PTT natif (docs/ptt-v0.1.md): address of LiveKit for the devices and
+      # its key, placed by the operator in .env.
+      SARCADE_LIVEKIT_URL: ${SARCADE_LIVEKIT_URL:-}
+      SARCADE_LIVEKIT_API_KEY: ${SARCADE_LIVEKIT_API_KEY:-}
+      SARCADE_LIVEKIT_API_SECRET: ${SARCADE_LIVEKIT_API_SECRET:-}
+      # Navigation (docs/navigation-v0.1.md): start with --profile routing.
+      SARCADE_VALHALLA_URL: ${SARCADE_VALHALLA_URL:-}
+      # Road graph for navigation on the device, built from the same OSM
+      # extract as Valhalla (profile routing).
+      SARCADE_OSM_PBF: /var/lib/sarcade/osm/sarcade-area.osm.pbf
+      SARCADE_ROUTING_GRAPH: /var/lib/sarcade/routing/sarcade-graph.srg.gz
+      # Base maps (docs/basemaps-v0.1.md): offline MBTiles packages.
+      SARCADE_TILES_ROOT: /var/lib/sarcade/tiles
+      SARCADE_MAX_TILE_PACKAGE_BYTES: ${SARCADE_MAX_TILE_PACKAGE_BYTES:-4294967296}
+      # Updates and security (docs/security-updates-v0.1.md). The admin
+      # token is placed by the operator in .env, never in the repository.
+      SARCADE_ADMIN_TOKEN: ${SARCADE_ADMIN_TOKEN:-}
+      # Accès de secours (administrateurs du serveur) et envoi des codes de
+      # connexion par Brevo ; sans SMTP, envoi simulé (journal de sécurité).
+      SARCADE_ADMIN_EMAILS: ${SARCADE_ADMIN_EMAILS:-}
+      SARCADE_SMTP_HOST: ${SARCADE_SMTP_HOST:-}
+      SARCADE_SMTP_PORT: ${SARCADE_SMTP_PORT:-587}
+      SARCADE_SMTP_USER: ${SARCADE_SMTP_USER:-}
+      SARCADE_SMTP_PASSWORD: ${SARCADE_SMTP_PASSWORD:-}
+      SARCADE_SMTP_FROM: ${SARCADE_SMTP_FROM:-}
+      SARCADE_SERVER_ID: ${SARCADE_SERVER_ID:-}
+      SARCADE_UPDATE_CHECK: ${SARCADE_UPDATE_CHECK:-1}
+      # Last versions on Google Play / TestFlight (« 0.1.0+415 »), shown on phones.
+      SARCADE_CLIENT_RELEASE_ANDROID: ${SARCADE_CLIENT_RELEASE_ANDROID:-}
+      SARCADE_CLIENT_RELEASE_IOS: ${SARCADE_CLIENT_RELEASE_IOS:-}
+      SARCADE_FILE_ROOT: /var/lib/sarcade/files
+      # SIEM (SARCADE Pro, module « siem », signed licence uploaded in the
+      # administration tool, docs/pro-licences-v0.1.md): Wazuh syslog over TLS.
+      SARCADE_SIEM_HOST: ${SARCADE_SIEM_HOST:-}
+      SARCADE_SIEM_PORT: ${SARCADE_SIEM_PORT:-6514}
+      SARCADE_SIEM_FORMAT: ${SARCADE_SIEM_FORMAT:-syslog}
+      SARCADE_SIEM_TLS: ${SARCADE_SIEM_TLS:-1}
+      SARCADE_SIEM_FILE: ${SARCADE_SIEM_FILE:-}
+      # HTTPS (docs/https-v0.1.md): mode and address announced to the
+      # clients, which switch to HTTPS by themselves.
+      SARCADE_TLS_MODE: ${SARCADE_TLS_MODE:-off}
+      SARCADE_PUBLIC_URL: ${SARCADE_PUBLIC_URL:-}
+      # Real address of the devices behind the reverse proxy (security journal).
+      FORWARDED_ALLOW_IPS: ${SARCADE_TRUSTED_PROXIES:-127.0.0.1}
+    ports:
+      # With HTTPS, SARCADE_HTTP_BIND=127.0.0.1 keeps plain HTTP for the machine only.
+      - "${SARCADE_HTTP_BIND:-0.0.0.0}:8000:8000"
+    volumes:
+      - sarcade-tiles:/var/lib/sarcade/tiles
+      - sarcade-files:/var/lib/sarcade/files
+      - sarcade-valhalla:/var/lib/sarcade/osm:ro
+      - sarcade-routing:/var/lib/sarcade/routing
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # HTTPS (docker compose --profile https up -d), docs/https-v0.1.md:
+  # option A, Let's Encrypt certificate by DNS-01 challenge (default), or
+  # option B, local certification authority for installations never online.
+  https:
+    profiles: ["https"]
+    build: ./docker/caddy
+    image: sarcade-caddy:local
+    restart: unless-stopped
+    environment:
+      SARCADE_TLS_MODE: ${SARCADE_TLS_MODE:-acme-dns}
+      SARCADE_DOMAIN: ${SARCADE_DOMAIN:-}
+      SARCADE_TLS_NAMES: ${SARCADE_TLS_NAMES:-}
+      SARCADE_ACME_EMAIL: ${SARCADE_ACME_EMAIL:-}
+      SARCADE_DNS_PROVIDER: ${SARCADE_DNS_PROVIDER:-}
+      SARCADE_ACME_RESOLVERS: ${SARCADE_ACME_RESOLVERS:-1.1.1.1 9.9.9.9}
+      # DNS provider credentials, placed by the operator in .env.
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
+      OVH_ENDPOINT: ${OVH_ENDPOINT:-ovh-eu}
+      OVH_APPLICATION_KEY: ${OVH_APPLICATION_KEY:-}
+      OVH_APPLICATION_SECRET: ${OVH_APPLICATION_SECRET:-}
+      OVH_CONSUMER_KEY: ${OVH_CONSUMER_KEY:-}
+      GANDI_BEARER_TOKEN: ${GANDI_BEARER_TOKEN:-}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - sarcade-caddy-data:/data
+      - sarcade-caddy-config:/config
+    depends_on:
+      - server
+
+  # PTT natif (docker compose --profile ptt up -d), docs/ptt-v0.1.md: LiveKit
+  # (Apache 2.0) carries the voice between the devices; signalling on 7880
+  # (through the tunnel), voice on 7882/udp (a port opened on the box).
+  livekit:
+    profiles: ["ptt"]
+    image: livekit/livekit-server:v1.10
+    restart: unless-stopped
+    command: ["--config", "/etc/livekit.yaml"]
+    environment:
+      LIVEKIT_KEYS: "${SARCADE_LIVEKIT_API_KEY:-}: ${SARCADE_LIVEKIT_API_SECRET:-}"
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "7882:7882/udp"
+    volumes:
+      - ./docker/livekit.yaml:/etc/livekit.yaml:ro
+
+  # Navigation level 2 (docker compose --profile routing up -d):
+  # OpenStreetMap extract of the ADRASEC department plus 10 km, then Valhalla.
+  osm-extract:
+    profiles: ["routing"]
+    image: debian:bookworm-slim
+    environment:
+      SARCADE_OSM_PBF_URL: ${SARCADE_OSM_PBF_URL:-https://download.geofabrik.de/europe/france/ile-de-france-latest.osm.pbf}
+      # minlon,minlat,maxlon,maxlat: Yvelines plus about 10 km (approximate, to check).
+      SARCADE_ROUTING_BBOX: ${SARCADE_ROUTING_BBOX:-1.31,48.35,2.37,49.18}
+    volumes:
+      - ./docker/osm-extract.sh:/osm-extract.sh:ro
+      - sarcade-valhalla:/custom_files
+    command: ["sh", "/osm-extract.sh"]
+
+  valhalla:
+    profiles: ["routing"]
+    image: ghcr.io/valhalla/valhalla-scripted:latest
+    environment:
+      build_elevation: "False"
+      build_admins: "True"
+      build_time_zones: "True"
+    ports:
+      - "8002:8002"
+    volumes:
+      - sarcade-valhalla:/custom_files
+    depends_on:
+      osm-extract:
+        condition: service_completed_successfully
+
+volumes:
+  sarcade-postgres:
+  sarcade-valhalla:
+  sarcade-tiles:
+  sarcade-files:
+  sarcade-routing:
+  sarcade-caddy-data:
+  sarcade-caddy-config:

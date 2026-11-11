@@ -1,0 +1,96 @@
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: sarcade
+      POSTGRES_USER: sarcade
+      POSTGRES_PASSWORD: sarcade-demo
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sarcade -d sarcade"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - demo-db:/var/lib/postgresql/data
+
+  server:
+    build:
+      context: ..
+    environment:
+      DATABASE_URL: postgresql+psycopg://sarcade:sarcade-demo@postgres:5432/sarcade
+      # The demo has no Internet nor routing tiles: weather and routing come
+      # from a local stand-in (services_stub.py).
+      SARCADE_WEATHER: "0"
+      SARCADE_OPEN_METEO_URL: http://services-stub:8080
+      SARCADE_VIGILANCE_URL: http://services-stub:8080/vigilance
+      SARCADE_METEOFRANCE_API_KEY: demo
+      SARCADE_VALHALLA_URL: http://services-stub:8080
+      SARCADE_REVERSE_GEOCODER_URL: http://services-stub:8080/geocodage/reverse
+      SARCADE_ALTIMETRY_URL: http://services-stub:8080/altimetrie/elevation.json
+      # Updates and security: releases API and SIEM collector stand-ins.
+      SARCADE_RELEASES_URL: http://services-stub:8080/releases/latest
+      SARCADE_WINDOWS_RELEASE_URL: http://services-stub:8080/releases/latest/download
+      SARCADE_ADMIN_TOKEN: demo-admin-token
+      SARCADE_SERVER_ID: sarcade-demo
+      # Pro module « siem » enabled by an ephemeral test licence (make_test_licence.py).
+      SARCADE_LICENCE_TEST_ROOT: ${SARCADE_LICENCE_TEST_ROOT:-}
+      SARCADE_SIEM_HOST: services-stub
+      SARCADE_SIEM_PORT: "6514"
+      SARCADE_SIEM_TLS: "0"
+      # Road graph of navigation on the device, from a small sample network.
+      SARCADE_OSM_PBF: /demo-osm/sample.osm
+      # HTTPS through the reverse proxy (profile https), option B local CA.
+      SARCADE_TLS_MODE: local-ca
+      SARCADE_PUBLIC_URL: https://sarcade.test
+      FORWARDED_ALLOW_IPS: "*"
+    ports:
+      - "8000:8000"
+    volumes:
+      - demo-files:/var/lib/sarcade/files
+      - demo-tiles:/var/lib/sarcade/tiles
+      - ./osm:/demo-osm:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      services-stub:
+        condition: service_started
+    restart: on-failure
+
+  # Reverse proxy HTTPS, option B (local certification authority), the
+  # only one that works without Internet nor DNS provider.
+  https:
+    profiles: ["https"]
+    build: ../docker/caddy
+    environment:
+      SARCADE_TLS_MODE: local-ca
+      SARCADE_DOMAIN: sarcade.test
+      SARCADE_TLS_NAMES: localhost
+    ports:
+      - "8081:80"
+      - "8443:443"
+    depends_on:
+      - server
+
+  services-stub:
+    image: python:3.12-slim
+    volumes:
+      - ./services_stub.py:/stub/services_stub.py:ro
+    command: ["python", "/stub/services_stub.py"]
+
+  simulator:
+    image: python:3.12-slim
+    working_dir: /demo
+    volumes:
+      - ./:/demo:ro
+    environment:
+      SARCADE_URL: http://server:8000
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["pip install -q httpx && exec python /demo/simulate.py"]
+    depends_on:
+      - server
+    profiles: ["simulate"]
+
+volumes:
+  demo-db:
+  demo-files:
+  demo-tiles:

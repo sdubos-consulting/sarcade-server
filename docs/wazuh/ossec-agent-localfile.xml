@@ -1,0 +1,11 @@
+<!--
+  Wazuh agent on the SARCADE host: collects the journal file written by the
+  server (SARCADE_SIEM_FILE=/var/lib/sarcade/files/siem/security.jsonl,
+  SARCADE_SIEM_FORMAT=json). Add to /var/ossec/etc/ossec.conf of the agent;
+  the agent-manager link is encrypted. The path is the one of the volume
+  sarcade-files on the host (docker volume inspect sarcade-files).
+-->
+<localfile>
+  <log_format>json</log_format>
+  <location>/var/lib/docker/volumes/sarcade-server_sarcade-files/_data/siem/security.jsonl</location>
+</localfile>

@@ -1,0 +1,15 @@
+name: Fonctionnalité
+description: Proposer une évolution fonctionnelle ou technique
+title: "[Feature] "
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: Besoin
+      description: Décrire le besoin opérationnel.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Critères d'acceptation

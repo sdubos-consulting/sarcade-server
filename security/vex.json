@@ -1,0 +1,9 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://github.com/sdubos-consulting/sarcade-server/blob/main/security/vex.json",
+  "author": "SDUBOS Consulting",
+  "role": "Fabricant de SARCADE",
+  "timestamp": "2026-11-02T00:00:00Z",
+  "version": 1,
+  "statements": []
+}

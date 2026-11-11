@@ -1,0 +1,70 @@
+<!--
+  SARCADE security journal rules for Wazuh (reference SIEM, SARCADE Pro).
+  Entries in JSON (SARCADE_SIEM_FORMAT=json), decoded by the built-in json
+  decoder. Copy to /var/ossec/etc/rules/ on the Wazuh manager.
+  IDs 100700-100799 are in the range reserved for local rules.
+  Status: not yet tried on a real Wazuh manager.
+-->
+<group name="sarcade,">
+
+  <rule id="100700" level="3">
+    <decoded_as>json</decoded_as>
+    <field name="app">^sarcade$</field>
+    <description>SARCADE: $(category).$(action) $(outcome)</description>
+  </rule>
+
+  <rule id="100710" level="5">
+    <if_sid>100700</if_sid>
+    <field name="category">^auth$</field>
+    <field name="outcome">^failure$</field>
+    <description>SARCADE: authentication failure ($(action)) from $(source_ip)</description>
+    <group>authentication_failed,</group>
+  </rule>
+
+  <rule id="100711" level="10" frequency="8" timeframe="120">
+    <if_matched_sid>100710</if_matched_sid>
+    <same_field>source_ip</same_field>
+    <description>SARCADE: repeated authentication failures from $(source_ip)</description>
+    <group>authentication_failures,</group>
+  </rule>
+
+  <rule id="100720" level="6">
+    <if_sid>100700</if_sid>
+    <field name="category">^rights$</field>
+    <description>SARCADE: rights $(action) $(outcome) for $(actor)</description>
+  </rule>
+
+  <rule id="100730" level="4">
+    <if_sid>100700</if_sid>
+    <field name="category">^admin$</field>
+    <description>SARCADE: administration action $(action) ($(outcome))</description>
+  </rule>
+
+  <rule id="100740" level="12">
+    <if_sid>100700</if_sid>
+    <field name="category">^update$</field>
+    <field name="action">^server_update_signature_invalid$</field>
+    <description>SARCADE: server update with an invalid signature refused</description>
+  </rule>
+
+  <rule id="100741" level="8">
+    <if_sid>100700</if_sid>
+    <field name="category">^update$</field>
+    <field name="action">^server_update_(failed|rolled_back|backup_failed)$</field>
+    <description>SARCADE: server update $(action)</description>
+  </rule>
+
+  <rule id="100750" level="10">
+    <if_sid>100700</if_sid>
+    <field name="category">^suspicious$</field>
+    <description>SARCADE: suspicious behaviour $(action) from $(source_ip)</description>
+    <group>attack,</group>
+  </rule>
+
+  <rule id="100760" level="7">
+    <if_sid>100700</if_sid>
+    <field name="category">^journal$</field>
+    <description>SARCADE: security journal $(action)</description>
+  </rule>
+
+</group>

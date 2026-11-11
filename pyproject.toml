@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sarcade-server"
+version = "0.1.0.dev0"
+description = "SARCADE operational coordination server"
+requires-python = ">=3.12"
+license = { text = "AGPL-3.0-only" }
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.30,<1",
+  "sqlalchemy>=2.0,<3",
+  "psycopg[binary]>=3.2,<4",
+  "geoalchemy2>=0.15,<1",
+  "shapely>=2.0,<3",
+  "python-multipart>=0.0.20,<1",
+  "alembic>=1.13,<2",
+  "pydantic>=2.9,<3",
+  "pyjwt[crypto]>=2.9,<3",
+  "httpx>=0.27,<1",
+  # Time zones of the maintenance windows, also on slim images.
+  "tzdata>=2024.1",
+  # OpenStreetMap reading for the road graph of navigation on the device.
+  "osmium>=3.7,<5",
+  # Ed25519 signatures of the SARCADE Pro licences, verified offline.
+  "cryptography>=50",
+  # Rain radar of Météo-France: grid, projection, map tiles (lot 29).
+  "numpy>=2.2,<3",
+  "pyproj>=3.7,<4",
+  "pillow>=11,<14",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=9.0.3,<10", "pytest-asyncio>=1.2,<2", "httpx>=0.27,<1", "pip-audit>=2.7,<3", "esprima>=4.0.1,<5"]
+
+[tool.setuptools.package-data]
+# Embedded list of the French communes (readable location, offline).
+sarcade = ["places/communes.csv.gz", "api/*.png", "api/confidentialite.html", "api/tv_static/*.js", "api/tv_static/*.css", "api/tv_static/*-LICENSE", "api/tv_static/images/*.png"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

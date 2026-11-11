@@ -1,0 +1,141 @@
+# Register of dismissed vulnerabilities of the SARCADE server (card « GitHub
+# de nouveau actif (10 novembre 2026) », choice 4c): OSV-Scanner
+# configuration read by the dependency watch on the i9
+# (tool/veille-dependances.ps1 -Failles, every day at 6 a.m.) for uv.lock and
+# the SBOM of the image served by the NAS. Same format as sarcade-app
+# (osv-scanner.toml, docs/sbom.md); security/vex.json stays the register of
+# the published image (docs/security-vex-v0.1.md).
+#
+# One [[IgnoredVulns]] per vulnerability that does not affect SARCADE, with
+# all three fields (checked by sarcade-app tool/osv_nightly.py check-config;
+# the watch reports an entry without them):
+#   id          OSV / GHSA / CVE identifier, as given in the card
+#   ignoreUntil re-examination date: after it, the vulnerability is
+#               reported again
+#   reason      why SARCADE is not affected (« pas concerné, parce que… »),
+#               who decided and when
+#
+# Example:
+# [[IgnoredVulns]]
+# id = "GHSA-xxxx-xxxx-xxxx"
+# ignoreUntil = 2027-05-01
+# reason = "Dev tool only, never in the image. Stéphane, 10 Nov 2026"
+
+# Paquets Debian de l'image du NAS sans correctif dans Debian 13 au 11/11/2026 (carte « Veille des
+# dépendances », choix 3 validé le 11/11/2026 ; image reconstruite avec --pull à chaque publication).
+# Réexamen au 11/02/2027 : la veille les signale de nouveau à cette date.
+
+[[IgnoredVulns]]
+id = "DEBIAN-CVE-2011-3374"
+ignoreUntil = 2027-02-11
+reason = "Pas concerné (apt) : apt-key et apt servent seulement à la construction de l'image, jamais à l'exécution. Écarté par Claude selon le choix 3 validé par Stéphane, 11 nov. 2026"
+
+[[IgnoredVulns]]
+id = "DEBIAN-CVE-2017-18018"
+ignoreUntil = 2027-02-11
+reason = "Pas concerné (coreutils) : commandes chown, sort, uniq, unexpand jamais lancées par le serveur sur des données reçues (aucun sous-processus). Écarté par Claude selon le choix 3 validé par Stéphane, 11 nov. 2026"
+
+[[IgnoredVulns]]
+id = "DEBIAN-CVE-2025-5278"
+ignoreUntil = 2027-02-11
+reason = "Pas concerné (coreutils) : commandes chown, sort, uniq, unexpand jamais lancées par le serveur sur des données reçues (aucun sous-processus). Écarté par Claude selon le choix 3 validé par Stéphane, 11 nov. 2026"
+
+[[IgnoredVulns]]
+id = "DEBIAN-CVE-2026-56391"
+ignoreUntil = 2027-02-11
+reason = "Pas concerné (coreutils) : commandes chown, sort, uniq, unexpand jamais lancées par le serveur sur des données reçues (aucun sous-processus). Écarté par Claude selon le choix 3 validé par Stéphane, 11 nov. 2026"
+
+[[IgnoredVulns]]
+id = "DEBIAN-CVE-2026-56392"
+ignoreUntil = 2027-02-11
+reason = "Pas concerné (coreutils) : commandes chown, sort, uniq, unexpand jamais lancées par le serveur sur des données reçues (aucun sous-processus). Écarté par Claude selon le choix 3 validé par Stéphane, 11 nov. 2026"
+
+[[IgnoredVulns]]
+id = "DEBIAN-CVE-2026-102473"
+ignoreUntil = 2027-02-11
+reason = "Pas concerné (dash) : sh ne lance que la commande fixe de démarrage du conteneur (CMD), sans donnée reçue. Écarté par Claude selon le choix 3 validé par Stéphane, 11 nov. 2026"
+
+[[IgnoredVulns]]
+id = "DEBIAN-CVE-2026-102474"
+ignoreUntil = 2027-02-11
+reason = "Pas concerné (dash) : sh ne lance que la commande fixe de démarrage du conteneur (CMD), sans donnée reçue. Écarté par Claude selon le choix 3 validé par Stéphane, 11 nov. 2026"
+
+[[IgnoredVulns]]
+id = "DEBIAN-CVE-2026-53910"
+ignoreUntil = 2027-02-11
+reason = "Pas concerné (diffutils) : diff3 jamais lancé par le serveur. Écarté par Claude selon le choix 3 validé par Stéphane, 11 nov. 2026"
+
+[[IgnoredVulns]]
+id = "DEBIAN-CVE-2026-107496"
+ignoreUntil = 2027-02-11
+reason = "Pas concerné (openssl) : CMS, QUIC et AES-GCM-SIV : fonctions jamais utilisées par Python (ssl, httpx) ni par le serveur. Écarté par Claude selon le choix 3 validé par Stéphane, 11 nov. 2026"
+
+[[IgnoredVulns]]
+id = "DEBIAN-CVE-2026-88822"
+ignoreUntil = 2027-02-11
+reason = "Pas concerné (openssl) : CMS, QUIC et AES-GCM-SIV : fonctions jamais utilisées par Python (ssl, httpx) ni par le serveur. Écarté par Claude selon le choix 3 validé par Stéphane, 11 nov. 2026"
+
+[[IgnoredVulns]]
+id = "DEBIAN-CVE-2026-88823"
+ignoreUntil = 2027-02-11
+reason = "Pas concerné (openssl) : CMS, QUIC et AES-GCM-SIV : fonctions jamais utilisées par Python (ssl, httpx) ni par le serveur. Écarté par Claude selon le choix 3 validé par Stéphane, 11 nov. 2026"
+
+[[IgnoredVulns]]
+id = "DEBIAN-CVE-2026-95691"
+ignoreUntil = 2027-02-11
+reason = "Pas concerné (openssl) : CMS, QUIC et AES-GCM-SIV : fonctions jamais utilisées par Python (ssl, httpx) ni par le serveur. Écarté par Claude selon le choix 3 validé par Stéphane, 11 nov. 2026"
+
+[[IgnoredVulns]]
+id = "DEBIAN-CVE-2026-95692"
+ignoreUntil = 2027-02-11
+reason = "Pas concerné (openssl) : CMS, QUIC et AES-GCM-SIV : fonctions jamais utilisées par Python (ssl, httpx) ni par le serveur. Écarté par Claude selon le choix 3 validé par Stéphane, 11 nov. 2026"
+
+[[IgnoredVulns]]
+id = "DEBIAN-CVE-2005-2541"
+ignoreUntil = 2027-02-11
+reason = "Pas concerné (tar) : tar sert seulement à la construction de l'image (sur l'i9), jamais à l'exécution sur une archive reçue. Écarté par Claude selon le choix 3 validé par Stéphane, 11 nov. 2026"
+
+[[IgnoredVulns]]
+id = "DEBIAN-CVE-2026-18477"
+ignoreUntil = 2027-02-11
+reason = "Pas concerné (tar) : tar sert seulement à la construction de l'image (sur l'i9), jamais à l'exécution sur une archive reçue. Écarté par Claude selon le choix 3 validé par Stéphane, 11 nov. 2026"
+
+[[IgnoredVulns]]
+id = "DEBIAN-CVE-2026-18508"
+ignoreUntil = 2027-02-11
+reason = "Pas concerné (tar) : tar sert seulement à la construction de l'image (sur l'i9), jamais à l'exécution sur une archive reçue. Écarté par Claude selon le choix 3 validé par Stéphane, 11 nov. 2026"
+
+[[IgnoredVulns]]
+id = "DEBIAN-CVE-2026-5704"
+ignoreUntil = 2027-02-11
+reason = "Pas concerné (tar) : tar sert seulement à la construction de l'image (sur l'i9), jamais à l'exécution sur une archive reçue. Écarté par Claude selon le choix 3 validé par Stéphane, 11 nov. 2026"
+
+[[IgnoredVulns]]
+id = "DEBIAN-CVE-2022-0563"
+ignoreUntil = 2027-02-11
+reason = "Pas concerné (util-linux) : outils de montage et nsenter de l'image, jamais lancés par le serveur (aucun sous-processus) ; failles locales sur un conteneur sans autre utilisateur. Écarté par Claude selon le choix 3 validé par Stéphane, 11 nov. 2026"
+
+[[IgnoredVulns]]
+id = "DEBIAN-CVE-2026-3184"
+ignoreUntil = 2027-02-11
+reason = "Pas concerné (util-linux) : outils de montage et nsenter de l'image, jamais lancés par le serveur (aucun sous-processus) ; failles locales sur un conteneur sans autre utilisateur. Écarté par Claude selon le choix 3 validé par Stéphane, 11 nov. 2026"
+
+[[IgnoredVulns]]
+id = "DEBIAN-CVE-2026-76642"
+ignoreUntil = 2027-02-11
+reason = "Pas concerné (util-linux) : outils de montage et nsenter de l'image, jamais lancés par le serveur (aucun sous-processus) ; failles locales sur un conteneur sans autre utilisateur. Écarté par Claude selon le choix 3 validé par Stéphane, 11 nov. 2026"
+
+[[IgnoredVulns]]
+id = "DEBIAN-CVE-2026-78408"
+ignoreUntil = 2027-02-11
+reason = "Pas concerné (util-linux) : outils de montage et nsenter de l'image, jamais lancés par le serveur (aucun sous-processus) ; failles locales sur un conteneur sans autre utilisateur. Écarté par Claude selon le choix 3 validé par Stéphane, 11 nov. 2026"
+
+[[IgnoredVulns]]
+id = "DEBIAN-CVE-2026-78409"
+ignoreUntil = 2027-02-11
+reason = "Pas concerné (util-linux) : outils de montage et nsenter de l'image, jamais lancés par le serveur (aucun sous-processus) ; failles locales sur un conteneur sans autre utilisateur. Écarté par Claude selon le choix 3 validé par Stéphane, 11 nov. 2026"
+
+[[IgnoredVulns]]
+id = "DEBIAN-CVE-2026-78410"
+ignoreUntil = 2027-02-11
+reason = "Pas concerné (util-linux) : outils de montage et nsenter de l'image, jamais lancés par le serveur (aucun sous-processus) ; failles locales sur un conteneur sans autre utilisateur. Écarté par Claude selon le choix 3 validé par Stéphane, 11 nov. 2026"
