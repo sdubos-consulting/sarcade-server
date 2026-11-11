@@ -225,6 +225,25 @@ def test_radar_paused_after_a_refusal(monkeypatch):
     assert r.due(5000.0)
 
 
+def test_refused_reason_tells_an_unsubscribed_api():
+    """Card « Météo-France : vigilance refusée (clé non abonnée) », 11 Nov 2026, choice 4."""
+    now = datetime(2026, 11, 11, 20, 51, tzinfo=UTC)
+    c = calls_mod.Calls()
+    c.record("vigilance", 403, now)
+    assert c.snapshot(now)["sources"]["vigilance"]["refused_reason"] == "not_subscribed"
+    c = calls_mod.Calls()
+    c.record("vigilance", 401, now)
+    assert c.snapshot(now)["sources"]["vigilance"]["refused_reason"] == "key_refused"
+    c.record("radar", 200, now)
+    snap = c.snapshot(now)["sources"]
+    assert snap["vigilance"]["refused_reason"] == "not_subscribed", "the radar works with the same key"
+    assert snap["radar"]["refused_reason"] is None
+    c = calls_mod.Calls()
+    c.record("forecast", 401, now)
+    c.record("radar", 200, now)
+    assert c.snapshot(now)["sources"]["forecast"]["refused_reason"] == "key_refused", "Open-Meteo has no portal key"
+
+
 # --- Choice 5: counters of the day, in the Diagnostic of the administrator ----------------
 
 def test_counters_reset_each_day_in_paris():
@@ -259,6 +278,7 @@ def test_diagnostic_of_the_administrator(db, monkeypatch):
     assert body["level"] == "admin"
     ws = body["weather_sources"]
     assert ws["sources"]["vigilance"]["state"] == "refused" and ws["sources"]["vigilance"]["calls_today"] == 1
+    assert ws["sources"]["vigilance"]["refused_reason"] == "not_subscribed"
     assert ws["key"] is True and set(ws["sources"]) == {"radar", "vigilance", "forecast"}
 
 

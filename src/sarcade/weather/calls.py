@@ -5,7 +5,10 @@
 météo) », validated on 10 Nov 2026, choices 4 and 5).
 
 * After a 401 or 403 (key refused, API not subscribed): no call to this
-  source for 6 hours.
+  source for 6 hours. ``refused_reason`` tells which one (card « Météo-France :
+  vigilance refusée », 11 Nov 2026, choice 4): ``not_subscribed`` after a 403,
+  or when the other Météo-France API answers with the same key; otherwise
+  ``key_refused``.
 * After a 429 (limit reached): wait for ``Retry-After`` (seconds or HTTP
   date), else 15 minutes.
 * Counters per source and per day (Europe/Paris), in memory: shown to the
@@ -20,6 +23,7 @@ import threading
 from zoneinfo import ZoneInfo
 
 SOURCES = ("radar", "vigilance", "forecast")
+METEOFRANCE = ("radar", "vigilance")   # same portal key
 REFUSED_PAUSE = timedelta(hours=6)
 RATE_PAUSE = timedelta(minutes=15)
 MAX_RATE_PAUSE = timedelta(hours=24)
@@ -116,6 +120,17 @@ class Calls:
             return "idle"
         return "ok" if s.last_error is None else "error"
 
+    def refused_reason(self, source: str, now: datetime) -> str | None:
+        """Why ``source`` is refused: ``not_subscribed`` (403, or the other
+        Météo-France API works with the same key), ``key_refused``, or None."""
+        if self.state(source, now) != "refused":
+            return None
+        if self.sources[source].last_status == 403:
+            return "not_subscribed"
+        if source in METEOFRANCE and any(self.sources[o].last_ok_at for o in METEOFRANCE if o != source):
+            return "not_subscribed"
+        return "key_refused"
+
     def snapshot(self, now: datetime | None = None) -> dict:
         """Diagnostic › Serveur of the administrator (choices 4 and 5)."""
         now = now or datetime.now(UTC)
@@ -127,7 +142,8 @@ class Calls:
                              "calls_yesterday": s.calls_yesterday, "failed_today": s.failed,
                              "last_call_at": _iso(s.last_call_at), "last_status": s.last_status,
                              "last_ok_at": _iso(s.last_ok_at), "last_error": s.last_error,
-                             "paused_until": _iso(self.paused(name, now))}
+                             "paused_until": _iso(self.paused(name, now)),
+                             "refused_reason": self.refused_reason(name, now)}
         return {"day": now.astimezone(TZ).date().isoformat(), "sources": out}
 
 
