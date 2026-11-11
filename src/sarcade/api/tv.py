@@ -9,6 +9,7 @@
   read by the TV, list of the screens of an event."""
 import hashlib
 import html
+import logging
 import secrets
 import time
 import uuid
@@ -54,6 +55,33 @@ def _displays(db: Session) -> list[dict]:
     return list(get_value(db, KEY, []) or [])
 
 
+log = logging.getLogger(__name__)
+
+# Card « Écrans TV : page plus directe », 11 Nov 2026, choice 8: a revoked
+# or expired screen can never connect again; it is erased 14 days after its
+# end. Until then it stays in the list (older applications) and its pairing
+# and revocation stay in the logbook of the event, which is not erased.
+PURGE_AFTER_S = 14 * 24 * 3600
+
+
+def _ended_at(d: dict) -> float | None:
+    """End of a screen: its revocation, else its expiry; None while active.
+    A screen revoked before ``revoked_at`` existed: its last sign of life."""
+    if d.get("revoked"):
+        return d.get("revoked_at") or max(d.get("created", 0), tv.seen.get(d.get("id"), 0))
+    return d.get("expires", 0)
+
+
+def purge_ended(displays: list[dict], now: float) -> tuple[list[dict], int]:
+    """Screens kept, and the number erased (ended more than 14 days ago)."""
+    kept = []
+    for d in displays:
+        end = _ended_at(d)
+        if end is None or end > now - PURGE_AFTER_S:
+            kept.append(d)
+    return kept, len(displays) - len(kept)
+
+
 def _actor(request: Request) -> str:
     """Who approved or revoked a screen, for the logbook: the email checked
     by Cloudflare Access, else « opérateur » (local network)."""
@@ -92,7 +120,7 @@ def pair_status(pair_id: str, db: Session = Depends(get_db)):
     tv.store.pairings.pop(pair_id, None)
     tv.store.by_code.pop(p.code, None)
     now = time.time()
-    displays = [d for d in _displays(db) if d.get("expires", 0) > now - 7 * 24 * 3600]
+    displays, _ = purge_ended(_displays(db), now)
     displays.append({"id": str(uuid.uuid4()), "hash": tv.token_hash(token), "event_id": event_id,
                      "created": now, "expires": now + tv.TOKEN_TTL_S, "revoked": False, "code": p.code,
                      "owner": p.approved_by, "name": p.name})
@@ -369,7 +397,12 @@ def list_displays(event_id: str, request: Request, db: Session = Depends(get_db)
     email = checked_email(request)
     admin = email is not None and "admin" in roles.roles_of(db, email)
     out = []
-    for d in _displays(db):
+    displays, erased = purge_ended(_displays(db), now)
+    if erased:
+        set_value(db, KEY, displays)
+        db.commit()
+        log.info("tv: %d revoked or expired screens erased after 14 days", erased)
+    for d in displays:
         if d.get("event_id") != event_id:
             continue
         active = not d.get("revoked") and d["expires"] > now
@@ -431,6 +464,7 @@ def revoke_display(event_id: str, display_id: str, request: Request, db: Session
     for d in displays:
         if d["id"] == display_id and d.get("event_id") == event_id:
             d["revoked"] = True
+            d["revoked_at"] = time.time()
             set_value(db, KEY, displays)
             db.add(LogbookRow(event_id=event_id, kind="display", object_id=None, actor_id=actor,
                               summary=f"Écran d'affichage révoqué ({_label(d.get('name'), d.get('code'))})", time=datetime.now(UTC)))

@@ -880,3 +880,35 @@ def test_apply_view_draws_the_zones_in_the_mode():
     on = {"layers": {"bearings": True}}
     out = tv.apply_view(snap, on, NOW, bearings=[*GOOD, *OTHER], zone_modes={"s": "single"})
     assert len(out["zones"]) == 1 and out["zones"][0]["mode"] == "single"
+
+
+def test_ended_screens_erased_after_14_days():
+    """Card « Écrans TV : page plus directe », 11 Nov 2026, choice 8."""
+    day = 24 * 3600
+    now = 100 * day
+    displays = [
+        {"id": "active", "created": now - day, "expires": now + day, "revoked": False},
+        {"id": "expired-3d", "created": now - 4 * day, "expires": now - 3 * day, "revoked": False},
+        {"id": "expired-15d", "created": now - 16 * day, "expires": now - 15 * day, "revoked": False},
+        {"id": "revoked-2d", "created": now - 30 * day, "expires": now + day, "revoked": True, "revoked_at": now - 2 * day},
+        {"id": "revoked-20d", "created": now - 30 * day, "expires": now + day, "revoked": True, "revoked_at": now - 20 * day},
+        {"id": "revoked-old-format", "created": now - 30 * day, "expires": now - 29 * day, "revoked": True},
+    ]
+    kept, erased = api.purge_ended(displays, now)
+    assert [d["id"] for d in kept] == ["active", "expired-3d", "revoked-2d"]
+    assert erased == 3
+
+
+def test_revoked_screen_dated_and_list_purged(sos_client):
+    import time as time_mod
+    c, who, db = sos_client
+    from sarcade.updates.service import set_value
+    set_value(db, api.KEY, api._displays(db) + [
+        {"id": "d0", "event_id": "e1", "created": 0, "expires": 1, "revoked": True, "code": "OLD123"}])
+    db.commit()
+    assert [d["id"] for d in c.get("/api/v0.1/events/e1/displays").json()] == ["d1"]
+    assert [d["id"] for d in api._displays(db)] == ["d1"], "erased on the server, not only hidden"
+    assert c.delete("/api/v0.1/events/e1/displays/d1").status_code == 204
+    assert api._displays(db)[0]["revoked_at"] >= time_mod.time() - 5
+    [d] = c.get("/api/v0.1/events/e1/displays").json()
+    assert d["revoked"] is True and d["active"] is False, "kept 14 days for older applications"
