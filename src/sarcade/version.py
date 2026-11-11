@@ -76,8 +76,19 @@ def sbom_digest(path: Path | None = None) -> str | None:
     return _sbom_cache["digest"]
 
 
+def public_repo() -> str | None:
+    """Public repository where an issue may be opened (card « Signaler un
+    problème : mail en principal, lien GitHub en second », 11 Nov 2026,
+    choice 3): ``SARCADE_PUBLIC_REPO_URL``, a https://github.com/owner/repo
+    address; None (no link in the application) when empty or anything else."""
+    import os
+    import re
+    url = (os.environ.get("SARCADE_PUBLIC_REPO_URL") or "").strip().rstrip("/")
+    return url if re.fullmatch(r"https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", url) else None
+
+
 def info() -> dict:
     c, t = commit(), tag()
     return {"service": "sarcade-server", "version": updates.installed_version(), "commit": c,
             "commit_short": c[:7] if c else None, "tag": t, "reference": reference(t, c),
-            "web_sha256": web_digest(), "sbom_sha256": sbom_digest()}
+            "web_sha256": web_digest(), "sbom_sha256": sbom_digest(), "public_repo": public_repo()}

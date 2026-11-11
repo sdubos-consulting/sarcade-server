@@ -28,6 +28,7 @@ Carte « Diagnostic administrateur : Échéances » (4 novembre 2026, 7 h 26), q
 
 ## Version (lot 28)
 - `GET /version` et `GET /api/v0.1/version` (même exposition que `/sarcade-web.sha256`) : `version`, `commit`, `commit_short`, `tag`, `reference` (l'étiquette `v…` si l'image vient d'une étiquette, sinon `main@<commit court>`, `dev` pour une construction locale), `web_sha256` (client web servi), `sbom_sha256` (empreinte de `/sarcade-sbom.cdx.json`).
+  - `public_repo` : adresse du dépôt public GitHub (`SARCADE_PUBLIC_REPO_URL`, forme `https://github.com/propriétaire/dépôt`), sinon `null`. Présente, elle affiche dans l'application le lien « Ou sur GitHub (compte requis) » de « Signaler un problème » (fiche du 11 novembre 2026, choix 3). Variable à ajouter par le porteur dans `docker-compose.override.yml` du NAS le jour où GitHub est rétabli.
 - Réglés à la construction de l'image (`image.yml`) : `SARCADE_VERSION`, `SARCADE_COMMIT`, `SARCADE_TAG`.
 
 Vérification : `tests/test_diagnostics.py`, `tests/test_diagnostics_levels.py`, `tests/test_deadlines.py`, `demo/verify_diagnostics.py`.
